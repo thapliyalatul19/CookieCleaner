@@ -1,0 +1,29 @@
+"""Core module for Cookie Cleaner."""
+
+from .config import ConfigManager, ConfigError
+from .logging_config import setup_logging, get_audit_logger, log_clean_operation
+from .models import (
+    BrowserStore,
+    CookieRecord,
+    DomainAggregate,
+    DeleteTarget,
+    DeleteOperation,
+    DeletePlan,
+)
+
+__all__ = [
+    # Config
+    "ConfigManager",
+    "ConfigError",
+    # Logging
+    "setup_logging",
+    "get_audit_logger",
+    "log_clean_operation",
+    # Models
+    "BrowserStore",
+    "CookieRecord",
+    "DomainAggregate",
+    "DeleteTarget",
+    "DeleteOperation",
+    "DeletePlan",
+]
