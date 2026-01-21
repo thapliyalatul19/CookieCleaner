@@ -1,0 +1,53 @@
+---
+globs:
+  - "src/core/scanner/**/*"
+  - "src/scanner/**/*"
+priority: 120
+tier: Backend
+---
+
+# Browser Scanning Boundaries
+
+## Purpose
+CRITICAL SAFETY RULE: Scanner modules must NEVER execute DELETE operations.
+
+## Hard Boundaries
+
+### Scanner Module Responsibilities (ALLOWED)
+- Filesystem traversal to locate browser directories
+- Profile discovery (iterate ALL profiles, not just Default)
+- SQLite READ operations (SELECT only)
+- Schema detection via PRAGMA table_info()
+- DPAPI decryption (read-only operation)
+- Return data structures (BrowserStore, CookieRecord lists)
+
+### Scanner Module Prohibitions (FORBIDDEN)
+- DELETE, UPDATE, INSERT SQL statements
+- Database file modification
+- File deletion or renaming
+- Process termination
+- Writing to browser directories
+
+## Profile Discovery Rules
+
+### Chromium Browsers
+1. Locate User Data root (see PRD for paths)
+2. Iterate ALL subdirectories
+3. Valid profile: contains `Network\Cookies` OR `Cookies`
+4. Do NOT hardcode "Default" - iterate dynamically
+
+### Firefox
+1. Parse profiles.ini
+2. Resolve relative paths
+3. Check for cookies.sqlite existence
+4. Missing cookies.sqlite is non-fatal (log + skip)
+
+## Error Handling
+- Locked databases during scan: FLAG for later, continue scanning
+- Missing directories: Log, continue
+- Permission denied: Log, continue
+
+## Testing Requirements
+- Mock filesystem tests (no real browser data)
+- Verify ALL profiles discovered (not just Default)
+- Verify no DELETE/UPDATE/INSERT in module code

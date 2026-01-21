@@ -1,0 +1,63 @@
+---
+globs:
+  - "src/core/delete/**/*"
+  - "src/execution/**/*"
+priority: 150
+tier: Backend
+---
+
+# Deletion Safety Locks
+
+## Purpose
+Enforce mandatory safety protocols before any destructive operation.
+
+## Pre-Deletion Checklist (ALL REQUIRED)
+
+### 1. Lock Detection (LockResolver - MANDATORY)
+**When:** Before backup AND before delete  
+**How:** Check file locks via pywin32  
+**Action:** If locked → BLOCK operation, show error with process names  
+
+### 2. Process Detection (psutil - MANDATORY)
+**When:** Before any database operation  
+**How:** `psutil.process_iter()` check for browser processes  
+**Action:** If running → BLOCK operation, prompt user to close browsers  
+**Known Processes:** chrome.exe, firefox.exe, msedge.exe, brave.exe, opera.exe, vivaldi.exe
+
+### 3. Backup Creation (BackupManager - MANDATORY)
+**When:** Before EVERY delete operation  
+**How:** Copy entire database to timestamped backup folder  
+**Format:** `{browser}_{profile}_{timestamp}.bak`  
+**Action:** If backup fails → ABORT delete operation  
+
+### 4. SQLite Transactions (MANDATORY)
+**Pattern:**
+```python
+conn.execute("BEGIN TRANSACTION")
+try:
+    # DELETE statements here
+    conn.execute("COMMIT")
+except Exception as e:
+    conn.execute("ROLLBACK")
+    # Restore from backup
+    raise
+```
+
+## Execution Order (NON-NEGOTIABLE)
+
+1. Check process locks (fail-fast)
+2. Check running browsers (fail-fast)
+3. Generate DeletePlan
+4. Create backups (all databases)
+5. User confirmation (UI layer)
+6. Execute SQLite transactions (per database)
+7. Verify results
+8. Log to audit
+
+## Rollback Protocol
+
+If ANY step fails:
+1. ROLLBACK SQLite transaction
+2. Restore database from backup
+3. Log failure to audit
+4. Show error to user with remediation steps

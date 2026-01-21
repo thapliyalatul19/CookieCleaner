@@ -1,0 +1,14 @@
+Cookie Cleaner - Product Requirements Document
+
+Source of Truth (Read-Only):
+C:\Users\thapl\OneDrive\Documents\Obsidian\Obsidian Vault 1\Cookie Cleaner\Cookie_Cleaner_PRD 1.3.md
+
+Version: 1.4 (Build-Ready / Validated)
+Date: January 19, 2026
+Status: Final Specification for Implementation (Ground Truth Validated)
+
+Note:
+- The PRD in Obsidian is the authoritative source
+- Do not modify the PRD from this repository
+- This repository (C:\dev\cookie-cleaner) is the working implementation
+- Changes to product requirements must go through the Director

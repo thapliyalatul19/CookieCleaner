@@ -1,0 +1,70 @@
+---
+globs:
+  - ".cursor/rules/*.mdc"
+  - ".claude/rules/*.mdc"
+  - "CLAUDE.md"
+  - ".context/**/*"
+  - ".github/workflows/**/*"
+  - ".git/hooks/**/*"
+  - "scripts/validate-context.*"
+  - "scripts/context-init.*"
+priority: 900
+tier: Governance
+---
+
+# Governance - No Red Zone Modifications
+
+## Purpose
+Protect infrastructure and governance files from accidental modification by Operator.
+
+## Red Zones (Director-Controlled)
+
+### Immutable Files
+- `CLAUDE.md` - The constitution
+- `.cursor/rules/*.mdc` - Rule definitions
+- `.claude/rules/*.mdc` - Rule definitions
+- `.github/workflows/**/*` - CI/CD pipelines
+- `.git/hooks/**/*` - Git hooks
+- `scripts/validate-context.*` - Validation scripts
+- `scripts/context-init.*` - Bootstrap scripts
+- `requirements.txt` - Dependency manifest
+
+### Read-Only Files (Except RAU Updates)
+- `.context/projectbrief.md` - Only updated by Director
+- `.context/productContext.md` - Only updated by Director
+- `.context/systemPatterns.md` - Operator updates "Decisions Log" only
+- `.context/activeContext.md` - Operator updates "Recent Changes" only
+
+## Operator Responsibilities
+
+### Allowed Operations on .context/
+1. **activeContext.md:**
+   - Append to "Recent Changes" after code changes
+   - Update "Phase Checklist" to mark items complete
+   - Update "Blocking Issues" if encountered
+
+2. **systemPatterns.md:**
+   - Append to "Decisions Log" when architectural decision made
+   - Format: `### YYYY-MM-DD: Decision Title`
+
+### Forbidden Operations
+- Modifying rule files (*.mdc)
+- Changing CLAUDE.md
+- Editing validation scripts
+- Modifying git hooks
+- Changing projectbrief.md or productContext.md structure
+
+## Enforcement
+
+### SUPERVISOR_MODE
+When `SUPERVISOR_MODE=1` environment variable is set:
+- Operator CANNOT commit changes to src/, lib/, app/
+- Operator MUST emit patch/diff and instruct Director or Worker to apply
+
+## Escalation for Red Zone Modifications
+
+If Operator needs to modify Red Zone files:
+1. STOP immediately
+2. Document reasoning in activeContext.md
+3. Request Director approval
+4. Wait for explicit permission

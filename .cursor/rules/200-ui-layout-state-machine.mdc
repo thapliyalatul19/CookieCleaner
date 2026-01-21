@@ -1,0 +1,56 @@
+---
+globs:
+  - "src/ui/**/*"
+priority: 200
+tier: Frontend
+---
+
+# UI Layout & State Machine
+
+## Purpose
+Enforce strict finite state machine for UI state transitions and control enablement.
+
+## State Definitions
+
+| State | Description | UI Controls |
+|-------|-------------|-------------|
+| **Idle** | Initial or post-clean | Scan: Enabled, Clean: Disabled |
+| **Scanning** | Reading databases | All: Disabled, Progress: Visible |
+| **Ready** | Scan complete | Scan: Enabled, Clean: Enabled |
+| **Cleaning** | Executing deletions | All: Disabled, Progress: Visible |
+| **Error** | Operation failed | Scan: Enabled, Clean: Disabled, Dialog: Visible |
+
+## State Transitions (ENFORCED)
+
+```
+Idle ──[User clicks Scan]──→ Scanning
+Scanning ──[Success]──→ Ready
+Scanning ──[Failure]──→ Error
+Ready ──[User clicks Clean]──→ Cleaning
+Cleaning ──[Success]──→ Ready
+Cleaning ──[Failure]──→ Error
+Error ──[User acknowledges]──→ Idle
+```
+
+## Rules
+
+### 1. Single State at a Time
+- Application MUST be in exactly one state
+- State stored in `self._state` enum
+- All state changes go through `set_state(new_state)` method
+
+### 2. Valid Transitions Only
+- `set_state()` MUST validate transition is allowed
+- Invalid transitions raise `InvalidStateTransitionError`
+- Log all state transitions
+
+### 3. UI Control Synchronization
+- `set_state()` MUST update all UI controls
+- Button enablement based on state table above
+- Progress bar visibility based on state
+
+### 4. Background Operations (QThread)
+- Scanning runs in `ScanWorker` thread
+- Cleaning runs in `CleanWorker` thread
+- UI remains responsive during operations
+- Workers emit signals for state transitions

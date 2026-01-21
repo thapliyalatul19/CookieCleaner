@@ -1,0 +1,42 @@
+---
+globs:
+  - "src/core/**/*"
+priority: 100
+tier: Backend
+---
+
+# Backend Core Contracts
+
+## Purpose
+Define data models and core business logic contracts for cookie management.
+
+## Data Models (src/core/models.py)
+
+### Required Models
+1. **BrowserStore**: Browser/profile metadata
+   - browser_name: str
+   - profile_id: str
+   - db_path: Path
+   - is_chromium: bool
+   - local_state_path: Optional[Path]
+
+2. **CookieRecord**: Individual cookie data
+   - domain: str (normalized)
+   - raw_host_key: str (as stored in DB)
+   - name: str
+   - store: BrowserStore
+   - expires: Optional[datetime]
+   - is_secure: bool
+
+3. **DomainAggregate**: Aggregated cookie data per domain
+   - normalized_domain: str
+   - cookie_count: int
+   - browsers: Set[str]
+   - records: List[CookieRecord]
+   - raw_host_keys: Set[str]
+
+## Rules
+- All models use dataclasses with frozen=True where applicable
+- Type hints are mandatory
+- Domain normalization: strip leading dot, lowercase
+- Preserve raw_host_keys for accurate deletion

@@ -1,0 +1,71 @@
+---
+globs:
+  - "tests/**/*"
+priority: 400
+tier: Testing
+---
+
+# Testing & Golden Fixtures
+
+## Purpose
+Define testing standards and fixture requirements for all modules.
+
+## Testing Pyramid
+
+### Unit Tests (70%)
+- Test individual functions/methods in isolation
+- Mock external dependencies (filesystem, network, databases)
+- Fast execution (<1s per test)
+- Location: `tests/unit/test_{module}.py`
+
+### Integration Tests (20%)
+- Test module interactions
+- May use test databases (not production data)
+- Location: `tests/integration/test_{flow}.py`
+
+### End-to-End Tests (10%)
+- Test complete user workflows
+- Use GUI automation (PyQt test framework)
+- Location: `tests/e2e/test_{scenario}.py`
+
+## Golden Fixtures
+
+### Mock Filesystem Structure
+```python
+# tests/fixtures/browser_profiles.py
+CHROME_PROFILES = {
+    "Default": {"has_cookies": True},
+    "Profile 1": {"has_cookies": True},
+    "Profile 2": {"has_cookies": False},
+}
+```
+
+### Test Databases
+- Use SQLite in-memory databases (`:memory:`)
+- Populate with known cookie data
+- Never use production browser databases
+
+## Test Coverage Requirements
+
+### Minimum Coverage
+- Core logic (models, aggregation): 90%
+- Scanner modules: 80%
+- Execution engine: 95% (safety-critical)
+- UI layer: 50%
+
+### Critical Path Tests
+1. Profile discovery finds ALL profiles (not just Default)
+2. Domain normalization (strip leading dot, lowercase)
+3. Whitelist matching (exact + wildcard)
+4. Lock detection prevents deletion
+5. Backup is created before deletion
+6. SQLite transaction rollback on error
+7. State machine enforces valid transitions
+
+## Test Naming Convention
+```python
+def test_{component}_{scenario}_{expected_result}():
+    # Arrange
+    # Act
+    # Assert
+```

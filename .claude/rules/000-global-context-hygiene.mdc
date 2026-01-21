@@ -1,0 +1,37 @@
+---
+globs:
+  - "**/*"
+priority: 000
+tier: Global
+---
+
+# Global Context Hygiene
+
+## Purpose
+Enforce Read-Act-Update (RAU) protocol across all file operations to maintain temporal consistency between volatile context window and persistent Memory Bank.
+
+## Rules
+
+### 1. Pre-Implementation Reading (MANDATORY)
+Before writing ANY code, Operator MUST:
+- Read ALL `.context/*.md` files to restore session state
+- Read relevant `.mdc` rule files for modules being modified
+- Confirm understanding of current phase from `activeContext.md`
+
+### 2. Post-Implementation Update (MANDATORY)
+After writing code, BEFORE committing, Operator MUST:
+A. Update `.context/activeContext.md`
+B. If architectural decision made: Update `.context/systemPatterns.md`
+
+### 3. Context Window Management
+Operator MUST trigger `/clear` when:
+- Window capacity exceeds 60%
+- Immediately after `git commit`
+- When switching task domains
+
+### 4. Atomic Work Units
+One Subtask = One Tested Module = One Commit
+
+## Enforcement
+- Pre-commit hook validates Memory Bank files are non-empty
+- SUPERVISOR_MODE=1 blocks Operator commits to src/

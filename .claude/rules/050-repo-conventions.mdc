@@ -1,0 +1,44 @@
+---
+globs:
+  - "**/*"
+priority: 050
+tier: Global
+---
+
+# Repository Conventions
+
+## Purpose
+Establish project-wide coding standards, file organization, and naming conventions.
+
+## Directory Structure
+```
+src/core/       - Data models, business logic
+src/scanner/    - Browser detection, profile resolution
+src/execution/  - Deletion engine, backup manager
+src/ui/         - PyQt6 GUI components
+tests/          - Unit and integration tests
+docs/           - Documentation, PRD
+scripts/        - Automation scripts
+.context/       - Memory Bank
+```
+
+## Python Conventions
+- Use type hints for all function signatures
+- Follow PEP 8 (black formatter, line length 100)
+- Dataclasses for data models
+- Docstrings for all public classes/functions
+- Absolute imports (from src.core import models)
+
+## File Naming
+- snake_case for Python files
+- PascalCase for classes
+- UPPER_CASE for constants
+- Test files: test_{module_name}.py
+
+## Commit Messages
+```
+[module] Brief description
+
+- Detail 1
+- Detail 2
+```
