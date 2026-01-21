@@ -1,9 +1,54 @@
 # Active Context
 
 ## Current Phase
-Phase 1: Environment & Foundation (Config + Logging + Data Models)
+Phase 2.1: SQLite Cookie Reader Implementation
 
 ## Recent Changes
+
+### 2026-01-20: Phase 2.1 Cookie Reader Complete
+- **Files changed:**
+  - `src/scanner/db_copy.py` (new) - Database temp copy utility
+  - `src/scanner/cookie_reader.py` (new) - Base reader interface + factory
+  - `src/scanner/chromium_cookie_reader.py` (new) - Chromium/Edge schema handling
+  - `src/scanner/firefox_cookie_reader.py` (new) - Firefox moz_cookies schema
+  - `src/scanner/__init__.py` (updated) - Added cookie reader exports
+  - `tests/scanner/conftest.py` (updated) - Added mock cookie database fixtures
+  - `tests/scanner/test_cookie_reader.py` (new) - Factory and integration tests
+  - `tests/scanner/test_chromium_cookie_reader.py` (new) - 22 Chromium-specific tests
+  - `tests/scanner/test_firefox_cookie_reader.py` (new) - 15 Firefox-specific tests
+- **Summary:**
+  - Implemented BaseCookieReader abstract class with read_cookies() and iter_cookies()
+  - Implemented ChromiumCookieReader with dynamic column detection (20/22 columns)
+  - Implemented FirefoxCookieReader for moz_cookies table (16 columns)
+  - Chromium timestamp conversion (microseconds since 1601 to datetime)
+  - Firefox timestamp conversion (Unix seconds to datetime)
+  - Domain normalization (strips leading dots, preserves raw_host_key)
+  - Database temp copy to avoid lock conflicts
+  - All 104 tests passing (30 core + 74 scanner)
+  - Safety verified: No DELETE statements in scanner module
+- **Next step:** Commit Phase 2.1 changes
+
+### 2026-01-20: Phase 1.2 Profile Resolver Complete
+- **Files changed:**
+  - `src/scanner/__init__.py` (new) - Package exports
+  - `src/scanner/browser_paths.py` (new) - BrowserConfig dataclass, browser path constants
+  - `src/scanner/chromium_resolver.py` (new) - Chromium profile discovery
+  - `src/scanner/firefox_resolver.py` (new) - Firefox profiles.ini parsing
+  - `src/scanner/profile_resolver.py` (new) - Main orchestrator
+  - `tests/scanner/__init__.py` (new) - Test package
+  - `tests/scanner/conftest.py` (new) - Mock browser directory fixtures
+  - `tests/scanner/test_browser_paths.py` (new) - 12 tests
+  - `tests/scanner/test_chromium_resolver.py` (new) - 8 tests
+  - `tests/scanner/test_firefox_resolver.py` (new) - 8 tests
+  - `tests/scanner/test_profile_resolver.py` (new) - 9 tests
+- **Summary:**
+  - Implemented BrowserConfig dataclass with paths for Chrome, Edge, Brave, Opera, Vivaldi, Firefox
+  - Chromium resolver finds Default + Profile N directories, supports modern (Network/Cookies) and legacy paths
+  - Firefox resolver parses profiles.ini, handles relative/absolute paths
+  - ProfileResolver orchestrator combines all resolvers, supports browser filtering
+  - All 67 tests passing (30 core + 37 scanner)
+  - Safety verified: No DELETE statements in scanner module
+- **Next step:** Commit Phase 1.2 changes
 
 ### 2026-01-20: Phase 1 Implementation Complete
 - **Files changed:**
