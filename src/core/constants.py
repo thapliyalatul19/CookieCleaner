@@ -52,3 +52,19 @@ BROWSER_EXECUTABLES = frozenset({
     "opera.exe",
     "vivaldi.exe",
 })
+
+# Public Suffixes - domains that cannot be whitelisted with domain: prefix
+# These are too broad and would whitelist too many cookies
+PUBLIC_SUFFIXES = frozenset({
+    # Generic TLDs
+    "com", "net", "org", "edu", "gov", "mil", "int",
+    # Country code TLDs
+    "uk", "de", "fr", "jp", "cn", "au", "ca", "ru", "br", "in",
+    # Common second-level TLDs
+    "co.uk", "org.uk", "ac.uk", "gov.uk",
+    "com.au", "net.au", "org.au",
+    "co.jp", "ne.jp", "or.jp",
+    "com.br", "org.br", "co.in", "org.in", "co.nz", "org.nz",
+    # Generic new TLDs
+    "io", "co", "app", "dev", "ai",
+})

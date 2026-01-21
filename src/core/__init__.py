@@ -10,6 +10,7 @@ from .models import (
     DeleteOperation,
     DeletePlan,
 )
+from .whitelist import WhitelistManager, WhitelistEntry
 
 __all__ = [
     # Config
@@ -26,4 +27,7 @@ __all__ = [
     "DeleteTarget",
     "DeleteOperation",
     "DeletePlan",
+    # Whitelist
+    "WhitelistManager",
+    "WhitelistEntry",
 ]

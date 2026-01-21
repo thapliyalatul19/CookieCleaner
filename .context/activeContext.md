@@ -1,9 +1,27 @@
 # Active Context
 
 ## Current Phase
-Phase 2.1: SQLite Cookie Reader Implementation
+Phase 2.2: Whitelist Engine Implementation
 
 ## Recent Changes
+
+### 2026-01-20: Phase 2.2 Whitelist Engine Complete
+- **Files changed:**
+  - `src/core/constants.py` (updated) - Added PUBLIC_SUFFIXES frozenset
+  - `src/core/whitelist.py` (new) - WhitelistManager and WhitelistEntry classes
+  - `src/core/__init__.py` (updated) - Added whitelist module exports
+  - `tests/core/test_whitelist.py` (new) - 59 comprehensive test cases
+- **Summary:**
+  - Implemented WhitelistManager class with grammar-based matching
+  - `domain:` prefix - recursive matching (domain + all subdomains)
+  - `exact:` prefix - literal matching (only exact host)
+  - `ip:` prefix - direct IP address matching
+  - Normalization: lowercase, strip leading dots, trim whitespace
+  - Public suffix guardrail rejects TLDs (com, co.uk, etc.) for domain: prefix
+  - O(1) lookup for exact/IP matches, O(n) for domain hierarchy walk
+  - All 163 tests passing (104 existing + 59 new whitelist tests)
+  - Safety verified: No DELETE statements in whitelist module
+- **Next step:** Commit Phase 2.2 changes
 
 ### 2026-01-20: Phase 2.1 Cookie Reader Complete
 - **Files changed:**
