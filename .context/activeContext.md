@@ -1,9 +1,44 @@
 # Active Context
 
 ## Current Phase
-Phase 4: Testing & Packaging (Complete)
+Phase 5: Code Review Fixes (Complete)
 
 ## Recent Changes
+
+### 2026-01-22: Code Review Fixes Complete (11 Commits)
+- **Files changed:**
+  - `src/execution/lock_resolver.py` - Added `preflight_browser_check()`, `get_browser_pids()`, `terminate_browser()` for process detection
+  - `src/execution/delete_executor.py` - Added `_preflight_lock_check()`, fixed dry-run reporting with `would_delete_count`
+  - `src/execution/backup_manager.py` - WAL/SHM backup, metadata JSON, improved `cleanup_old_backups()`
+  - `src/ui/dialogs/blocking_apps.py` - Added "Close & Retry" button with `CLOSE_AND_RETRY` constant
+  - `src/ui/main_window.py` - Implemented `_close_browsers_and_retry()`, `_restore_backup()`, `_infer_original_path()`
+  - `src/ui/workers/clean_worker.py` - Integrated DeletePlanner, validator, audit logging
+  - `src/ui/state_machine.py` - Added SCANNING to valid transitions from ERROR state
+  - `src/core/delete_planner.py` (new) - Extracted plan building from UI layer
+  - `src/core/delete_plan_validator.py` (new) - Validation with errors/warnings
+  - `src/core/psl_loader.py` (new) - Full Public Suffix List loading with LRU cache
+  - `src/scanner/chromium_resolver.py` - Fixed `_is_profile_dir()` to accept custom-named profiles
+  - `src/scanner/db_copy.py` - WAL/SHM temp file copy/cleanup
+  - `main.py` - Added `_cleanup_old_backups()` on startup
+  - `data/public_suffix_list.dat` (new) - Full PSL data file
+  - `tests/integration/test_wal_backup.py` (new) - 5 WAL mode backup/restore tests
+  - `tests/integration/test_process_gate.py` (new) - 10 browser process detection tests
+  - `tests/integration/test_psl_validation.py` (new) - 20 PSL validation tests
+  - Test fixes: Updated dry-run assertions, worker tests for new architecture
+- **Summary:**
+  - Commit 1: Preflight safety checks with browser process detection/termination
+  - Commit 2: DeletePlanner + DeletePlanValidator extracted from UI layer
+  - Commit 3: Dry-run fix - reports `total_would_delete` not `total_deleted`
+  - Commit 4: Chromium profile discovery accepts any dir with cookies
+  - Commit 5: WAL/SHM backup support in backup_manager and db_copy
+  - Commit 6: Full restore flow with metadata JSON for path recovery
+  - Commit 7: Full Public Suffix List (not hardcoded 25 entries)
+  - Commit 8: FSM error state fix - Scan enabled from Error state
+  - Commit 9: Wired audit logging in clean_worker
+  - Commit 10: Backup retention cleanup on startup
+  - Commit 11: Integration tests for WAL, process gate, PSL
+  - All 526 tests passing
+- **Next step:** All code review fixes complete
 
 ### 2026-01-22: Phase 4 Testing & Packaging Complete
 - **Files changed:**

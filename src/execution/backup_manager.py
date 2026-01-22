@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from dataclasses import dataclass
@@ -64,6 +65,32 @@ class BackupManager:
             # Copy the database file
             shutil.copy2(db_path, backup_path)
 
+            # Also backup WAL and SHM files if they exist
+            wal_path = Path(str(db_path) + "-wal")
+            shm_path = Path(str(db_path) + "-shm")
+
+            if wal_path.exists():
+                wal_backup = Path(str(backup_path) + "-wal")
+                shutil.copy2(wal_path, wal_backup)
+                logger.debug("Backed up WAL file: %s", wal_backup)
+
+            if shm_path.exists():
+                shm_backup = Path(str(backup_path) + "-shm")
+                shutil.copy2(shm_path, shm_backup)
+                logger.debug("Backed up SHM file: %s", shm_backup)
+
+            # Write metadata file with original path info
+            meta_path = Path(str(backup_path) + ".meta")
+            metadata = {
+                "original_db_path": str(db_path),
+                "browser": browser,
+                "profile": profile,
+                "timestamp": timestamp,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            meta_path.write_text(json.dumps(metadata, indent=2))
+            logger.debug("Created backup metadata: %s", meta_path)
+
             logger.info("Created backup: %s -> %s", db_path, backup_path)
 
             return BackupResult(
@@ -103,6 +130,8 @@ class BackupManager:
         """
         Restore a database from a backup file.
 
+        Also restores WAL and SHM files if they were backed up.
+
         Args:
             backup_path: Path to the backup file
             db_path: Path where the database should be restored
@@ -112,6 +141,29 @@ class BackupManager:
         """
         try:
             shutil.copy2(backup_path, db_path)
+
+            # Also restore WAL and SHM files if they exist in backup
+            wal_backup = Path(str(backup_path) + "-wal")
+            shm_backup = Path(str(backup_path) + "-shm")
+            wal_target = Path(str(db_path) + "-wal")
+            shm_target = Path(str(db_path) + "-shm")
+
+            if wal_backup.exists():
+                shutil.copy2(wal_backup, wal_target)
+                logger.debug("Restored WAL file: %s", wal_target)
+            elif wal_target.exists():
+                # No WAL backup but target exists - remove stale WAL
+                wal_target.unlink()
+                logger.debug("Removed stale WAL file: %s", wal_target)
+
+            if shm_backup.exists():
+                shutil.copy2(shm_backup, shm_target)
+                logger.debug("Restored SHM file: %s", shm_target)
+            elif shm_target.exists():
+                # No SHM backup but target exists - remove stale SHM
+                shm_target.unlink()
+                logger.debug("Removed stale SHM file: %s", shm_target)
+
             logger.info("Restored backup: %s -> %s", backup_path, db_path)
             return True
         except FileNotFoundError:
@@ -123,6 +175,53 @@ class BackupManager:
         except OSError as e:
             logger.error("OS error restoring backup: %s", e)
             return False
+
+    def get_original_path(self, backup_path: Path) -> Path | None:
+        """
+        Get the original database path from a backup's metadata.
+
+        Args:
+            backup_path: Path to the backup file
+
+        Returns:
+            Original database path if metadata exists, None otherwise
+        """
+        meta_path = Path(str(backup_path) + ".meta")
+
+        if not meta_path.exists():
+            logger.debug("No metadata file for backup: %s", backup_path)
+            return None
+
+        try:
+            metadata = json.loads(meta_path.read_text())
+            original_path = metadata.get("original_db_path")
+            if original_path:
+                return Path(original_path)
+            return None
+        except (json.JSONDecodeError, KeyError, OSError) as e:
+            logger.warning("Failed to read backup metadata %s: %s", meta_path, e)
+            return None
+
+    def get_backup_metadata(self, backup_path: Path) -> dict | None:
+        """
+        Get full metadata for a backup.
+
+        Args:
+            backup_path: Path to the backup file
+
+        Returns:
+            Metadata dict if available, None otherwise
+        """
+        meta_path = Path(str(backup_path) + ".meta")
+
+        if not meta_path.exists():
+            return None
+
+        try:
+            return json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to read backup metadata %s: %s", meta_path, e)
+            return None
 
     def get_latest_backup(self, browser: str, profile: str) -> Path | None:
         """
@@ -191,6 +290,14 @@ class BackupManager:
             for backup_file in self.backup_root.rglob("*.bak"):
                 try:
                     if backup_file.stat().st_mtime < cutoff:
+                        # Delete associated files (meta, wal, shm)
+                        for suffix in ["-wal", "-shm", ".meta"]:
+                            associated = Path(str(backup_file) + suffix)
+                            if associated.exists():
+                                associated.unlink()
+                                logger.debug("Deleted associated file: %s", associated)
+
+                        # Delete the backup file itself
                         backup_file.unlink()
                         deleted_count += 1
                         logger.debug("Deleted old backup: %s", backup_file)

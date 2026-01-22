@@ -33,6 +33,7 @@ class DeleteResult:
     success: bool
     error: str | None = None
     backup_path: Path | None = None
+    would_delete_count: int = 0  # For dry-run: how many would be deleted
 
 
 @dataclass
@@ -44,6 +45,7 @@ class DeleteReport:
     results: list[DeleteResult] = field(default_factory=list)
     total_deleted: int = 0
     total_failed: int = 0
+    total_would_delete: int = 0  # For dry-run: total that would be deleted
 
     @property
     def success(self) -> bool:
@@ -98,10 +100,44 @@ class DeleteExecutor:
 
             if result.success:
                 report.total_deleted += result.deleted_count
+                report.total_would_delete += result.would_delete_count
             else:
                 report.total_failed += 1
 
         return report
+
+    def _preflight_lock_check(self, db_path: Path) -> tuple[bool, str | None]:
+        """
+        Attempt to acquire an IMMEDIATE lock to verify write access before backup.
+
+        This catches race conditions where a browser may lock the database
+        between our file-level lock check and the actual deletion.
+
+        Args:
+            db_path: Path to the database file
+
+        Returns:
+            Tuple of (can_proceed, error_message)
+        """
+        if not db_path.exists():
+            return True, None
+
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=1.0)
+            try:
+                cursor = conn.cursor()
+                cursor.execute("BEGIN IMMEDIATE")
+                cursor.execute("ROLLBACK")
+                return True, None
+            except sqlite3.OperationalError as e:
+                error_str = str(e).lower()
+                if "locked" in error_str or "busy" in error_str:
+                    return False, f"Database locked: {e}"
+                return False, f"Database error: {e}"
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            return False, f"Cannot connect to database: {e}"
 
     def _execute_operation(self, op: DeleteOperation, dry_run: bool) -> DeleteResult:
         """
@@ -128,6 +164,21 @@ class DeleteExecutor:
                 error=error,
             )
 
+        # Step 1.5: Preflight lock check - attempt BEGIN IMMEDIATE before backup
+        can_proceed, preflight_error = self._preflight_lock_check(op.db_path)
+        if not can_proceed:
+            logger.warning("Preflight lock check failed for %s: %s", op.db_path, preflight_error)
+            # Try to identify blocking processes
+            blocking = self.lock_resolver._find_blocking_processes(op.db_path)
+            processes = ", ".join(blocking) or "unknown process"
+            return DeleteResult(
+                browser=op.browser,
+                profile=op.profile,
+                deleted_count=0,
+                success=False,
+                error=f"Database locked by {processes} (preflight check)",
+            )
+
         # Step 2: Create backup (skip for dry run)
         backup_path = None
         if not dry_run:
@@ -151,17 +202,18 @@ class DeleteExecutor:
 
         # Step 3-5: Execute deletion within transaction
         if dry_run:
-            # Dry run: just count what would be deleted
-            deleted_count = self._count_targets(op, is_chromium)
+            # Dry run: just count what would be deleted (no actual deletion)
+            would_delete = self._count_targets(op, is_chromium)
             logger.info(
                 "DRY RUN: Would delete %d cookies from %s/%s",
-                deleted_count, op.browser, op.profile
+                would_delete, op.browser, op.profile
             )
             return DeleteResult(
                 browser=op.browser,
                 profile=op.profile,
-                deleted_count=deleted_count,
+                deleted_count=0,  # No actual deletion in dry run
                 success=True,
+                would_delete_count=would_delete,
             )
 
         # Real execution

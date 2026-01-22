@@ -22,7 +22,7 @@ from src.core.config import ConfigManager
 from src.core.constants import APP_NAME, APP_VERSION
 from src.core.models import DomainAggregate
 from src.core.whitelist import WhitelistManager
-from src.execution import BackupManager, LockReport, DeleteReport
+from src.execution import BackupManager, LockReport, DeleteReport, LockResolver
 
 from src.ui.state_machine import AppState, StateManager, InvalidTransitionError
 from src.ui.app import apply_theme
@@ -36,6 +36,7 @@ from src.ui.workers import ScanWorker, CleanWorker
 from src.ui.dialogs import (
     CleanConfirmationDialog,
     BlockingAppsDialog,
+    CLOSE_AND_RETRY,
     RestoreBackupDialog,
     SettingsDialog,
     ErrorDialog,
@@ -71,6 +72,7 @@ class MainWindow(QMainWindow):
         self._config_manager = ConfigManager()
         self._whitelist_manager = WhitelistManager(self._config_manager.whitelist)
         self._backup_manager = BackupManager()
+        self._lock_resolver = LockResolver()
         self._state_manager = StateManager(self)
 
         # Scan results storage
@@ -197,7 +199,7 @@ class MainWindow(QMainWindow):
             self._toolbar.set_clean_enabled(False)
             self._transfer_controls.set_enabled(False)
         elif state == AppState.ERROR:
-            self._toolbar.set_scan_enabled(False)
+            self._toolbar.set_scan_enabled(True)  # Allow scan to retry after error
             self._toolbar.set_clean_enabled(False)
             self._transfer_controls.set_enabled(False)
 
@@ -278,7 +280,12 @@ class MainWindow(QMainWindow):
             return
 
         # Create and start clean worker
-        self._clean_worker = CleanWorker(self._domains_to_delete, dry_run, self)
+        self._clean_worker = CleanWorker(
+            self._domains_to_delete,
+            dry_run,
+            whitelist_manager=self._whitelist_manager,
+            parent=self,
+        )
         self._clean_worker.progress.connect(self._on_clean_progress)
         self._clean_worker.finished.connect(self._on_clean_finished)
         self._clean_worker.lock_detected.connect(self._on_lock_detected)
@@ -300,7 +307,7 @@ class MainWindow(QMainWindow):
 
         # Show completion message
         if report.dry_run:
-            msg = f"Dry run complete: {report.total_deleted} cookies would be deleted."
+            msg = f"Dry run complete: {report.total_would_delete} cookies would be deleted."
         else:
             msg = f"Clean complete: {report.total_deleted} cookies deleted."
 
@@ -322,9 +329,54 @@ class MainWindow(QMainWindow):
             pass
 
         dialog = BlockingAppsDialog(lock_reports, parent=self)
-        if dialog.exec() == BlockingAppsDialog.DialogCode.Accepted:
-            # User wants to retry - start clean again
+        result = dialog.exec()
+
+        if result == CLOSE_AND_RETRY:
+            # User wants to close browsers and retry
+            browsers = dialog.get_blocking_processes()
+            self._close_browsers_and_retry(browsers)
+        elif result == BlockingAppsDialog.DialogCode.Accepted:
+            # User wants to retry after manually closing browsers
             self._on_clean_clicked()
+        # else: user cancelled
+
+    def _close_browsers_and_retry(self, browsers: list[str]) -> None:
+        """
+        Close blocking browsers and retry the clean operation.
+
+        Args:
+            browsers: List of browser executable names to terminate
+        """
+        if not browsers:
+            self._on_clean_clicked()
+            return
+
+        # Show progress message
+        self._status_bar.show_message("Closing browsers...")
+
+        # Terminate each browser
+        failed_browsers = []
+        for browser in browsers:
+            if not self._lock_resolver.terminate_browser(browser):
+                failed_browsers.append(browser)
+
+        if failed_browsers:
+            QMessageBox.warning(
+                self,
+                "Could Not Close Browsers",
+                f"Failed to close the following browsers:\n"
+                f"{', '.join(failed_browsers)}\n\n"
+                "Please close them manually and try again.",
+            )
+            return
+
+        # Wait briefly for file handles to be released
+        import time
+        time.sleep(0.5)
+
+        # Retry the clean operation
+        self._status_bar.show_message("Retrying clean operation...")
+        self._on_clean_clicked()
 
     def _on_clean_error(self, error_type: str, error_message: str) -> None:
         """Handle clean error."""
@@ -441,26 +493,136 @@ class MainWindow(QMainWindow):
         Args:
             backup_path: Path to the backup file
         """
-        # Parse backup path to determine original db location
-        # Path format: {root}/{browser}/{profile}/{filename}.{timestamp}.bak
-        parts = backup_path.parts
-        if len(parts) < 4:
+        # Try to get original path from metadata
+        original_path = self._backup_manager.get_original_path(backup_path)
+
+        # Fall back to path inference for old backups without metadata
+        if original_path is None:
+            original_path = self._infer_original_path(backup_path)
+
+        if original_path is None:
             QMessageBox.warning(
                 self,
                 "Restore Failed",
-                "Could not determine original database location from backup path.",
+                "Could not determine original database location from backup.\n\n"
+                "This backup may have been created by an older version without metadata.",
             )
             return
 
-        # TODO: Implement proper mapping from backup to original db path
-        # For now, show a message
-        QMessageBox.information(
+        # Get metadata for display
+        metadata = self._backup_manager.get_backup_metadata(backup_path)
+        browser = metadata.get("browser", "Unknown") if metadata else "Unknown"
+        profile = metadata.get("profile", "Unknown") if metadata else "Unknown"
+        created_at = metadata.get("created_at", "Unknown") if metadata else "Unknown"
+
+        # Confirm with user
+        confirm = QMessageBox.question(
             self,
-            "Restore",
-            f"Backup restoration from:\n{backup_path}\n\n"
-            "Note: Full restore functionality requires knowing the original "
-            "database location. This will be implemented in a future update.",
+            "Confirm Restore",
+            f"Restore backup to:\n{original_path}\n\n"
+            f"Browser: {browser}\n"
+            f"Profile: {profile}\n"
+            f"Created: {created_at}\n\n"
+            "This will replace the current cookie database. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
+
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        # Perform restoration
+        success = self._backup_manager.restore_backup(backup_path, original_path)
+
+        if success:
+            QMessageBox.information(
+                self,
+                "Restore Complete",
+                f"Successfully restored backup to:\n{original_path}",
+            )
+        else:
+            QMessageBox.critical(
+                self,
+                "Restore Failed",
+                f"Failed to restore backup.\n\n"
+                f"Target path: {original_path}\n\n"
+                "Check that the browser is not running and try again.",
+            )
+
+    def _infer_original_path(self, backup_path: Path) -> Path | None:
+        """
+        Infer original database path from backup path structure.
+
+        Fallback for old backups without metadata.
+        Path format: {backup_root}/{browser}/{profile}/{filename}.{timestamp}.bak
+
+        Args:
+            backup_path: Path to the backup file
+
+        Returns:
+            Inferred original path, or None if cannot be determined
+        """
+        import os
+
+        # Get browser and profile from directory structure
+        parts = backup_path.parts
+        if len(parts) < 3:
+            return None
+
+        browser = parts[-3]
+        profile = parts[-2]
+
+        # Extract original filename from backup name
+        # Format: Cookies.20260120_143052.bak -> Cookies
+        filename = backup_path.name
+        if ".bak" in filename:
+            # Remove .bak and timestamp
+            base_parts = filename.rsplit(".", 3)
+            if len(base_parts) >= 3:
+                original_filename = base_parts[0]
+            else:
+                return None
+        else:
+            return None
+
+        # Map browser name to user data path
+        appdata_local = Path(os.environ.get("LOCALAPPDATA", ""))
+        appdata_roaming = Path(os.environ.get("APPDATA", ""))
+
+        browser_paths = {
+            "Chrome": appdata_local / "Google" / "Chrome" / "User Data",
+            "Edge": appdata_local / "Microsoft" / "Edge" / "User Data",
+            "Brave": appdata_local / "BraveSoftware" / "Brave-Browser" / "User Data",
+            "Opera": appdata_roaming / "Opera Software" / "Opera Stable",
+            "Vivaldi": appdata_local / "Vivaldi" / "User Data",
+            "Firefox": appdata_roaming / "Mozilla" / "Firefox" / "Profiles",
+        }
+
+        user_data = browser_paths.get(browser)
+        if user_data is None or not user_data.exists():
+            return None
+
+        # Build full path
+        if browser == "Firefox":
+            # Firefox: {profiles}/{profile}/cookies.sqlite
+            profile_dir = user_data / profile
+        else:
+            # Chromium: {user_data}/{profile}/Network/Cookies or {user_data}/{profile}/Cookies
+            profile_dir = user_data / profile
+
+        if not profile_dir.exists():
+            return None
+
+        # Try modern path first, then legacy
+        modern_path = profile_dir / "Network" / original_filename
+        legacy_path = profile_dir / original_filename
+
+        if modern_path.parent.exists():
+            return modern_path
+        elif legacy_path.parent.exists():
+            return legacy_path
+
+        return None
 
     def closeEvent(self, event) -> None:
         """Handle window close event."""

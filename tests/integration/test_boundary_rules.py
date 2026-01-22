@@ -217,7 +217,8 @@ class TestDomainBoundaryIsolation:
         assert report.success
         assert report.dry_run
         # The dry run counts actual matches in the DB
-        assert report.total_deleted >= 1  # Reports count, doesn't actually delete
+        assert report.total_would_delete >= 1  # Reports count, doesn't actually delete
+        assert report.total_deleted == 0  # No actual deletion in dry run
 
         # Verify no actual deletion occurred
         final_total = count_cookies_in_chromium_db(chrome_path)

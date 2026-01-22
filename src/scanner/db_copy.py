@@ -44,17 +44,44 @@ def copy_db_to_temp(db_path: Path) -> Path:
     logger.debug("Copying database %s to %s", db_path, temp_file)
     shutil.copy2(db_path, temp_file)
 
+    # Also copy WAL and SHM files if they exist (for WAL mode databases)
+    wal_path = Path(str(db_path) + "-wal")
+    shm_path = Path(str(db_path) + "-shm")
+
+    if wal_path.exists():
+        wal_temp = Path(str(temp_file) + "-wal")
+        shutil.copy2(wal_path, wal_temp)
+        logger.debug("Copied WAL file: %s", wal_temp)
+
+    if shm_path.exists():
+        shm_temp = Path(str(temp_file) + "-shm")
+        shutil.copy2(shm_path, shm_temp)
+        logger.debug("Copied SHM file: %s", shm_temp)
+
     return temp_file
 
 
 def cleanup_temp_db(temp_path: Path) -> None:
     """
-    Remove a temporary database copy.
+    Remove a temporary database copy and its WAL/SHM files.
 
     Args:
         temp_path: Path to the temporary file to remove.
     """
     try:
+        # Clean up WAL and SHM files first
+        wal_path = Path(str(temp_path) + "-wal")
+        shm_path = Path(str(temp_path) + "-shm")
+
+        if wal_path.exists():
+            wal_path.unlink()
+            logger.debug("Cleaned up temp WAL: %s", wal_path)
+
+        if shm_path.exists():
+            shm_path.unlink()
+            logger.debug("Cleaned up temp SHM: %s", shm_path)
+
+        # Clean up the main database file
         if temp_path.exists():
             temp_path.unlink()
             logger.debug("Cleaned up temp database: %s", temp_path)

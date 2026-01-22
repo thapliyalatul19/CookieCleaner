@@ -6,11 +6,15 @@ This module contains matching logic only - NO deletion operations.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Tuple
 
-from .constants import PUBLIC_SUFFIXES, VALID_WHITELIST_PREFIXES
+from .constants import VALID_WHITELIST_PREFIXES
+from .psl_loader import load_public_suffixes, is_public_suffix, get_public_suffix
+
+logger = logging.getLogger(__name__)
 
 
 # IPv4 pattern for validation
@@ -137,13 +141,22 @@ class WhitelistManager:
 
         # For domain: prefix, reject public suffixes
         if prefix == "domain":
-            if value in PUBLIC_SUFFIXES:
+            public_suffixes = load_public_suffixes()
+            if value in public_suffixes:
                 return False, f"Public suffix '{value}' cannot be used with domain: prefix (too broad)"
             # Also check multi-part suffixes
             if len(labels) >= 2:
                 two_part = f"{labels[-2]}.{labels[-1]}"
-                if value == two_part and two_part in PUBLIC_SUFFIXES:
+                if value == two_part and two_part in public_suffixes:
                     return False, f"Public suffix '{value}' cannot be used with domain: prefix (too broad)"
+
+        # For exact: prefix, warn about public suffixes (but allow)
+        if prefix == "exact":
+            if is_public_suffix(value):
+                logger.warning(
+                    "Warning: exact: prefix with public suffix '%s' may match unexpected cookies",
+                    value,
+                )
 
         return True, ""
 

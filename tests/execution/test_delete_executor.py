@@ -215,6 +215,31 @@ class TestDeleteExecutor:
         conn.close()
         assert count == 2
 
+    def test_dry_run_reports_would_delete_not_deleted(self, executor, chromium_db, temp_dir):
+        """Dry run reports would_delete_count > 0 and deleted_count = 0."""
+        plan = DeletePlan.create(dry_run=True)
+        plan.add_operation(DeleteOperation(
+            browser="Chrome",
+            profile="Default",
+            db_path=chromium_db,
+            backup_path=temp_dir / "backup.bak",
+            targets=[DeleteTarget(
+                normalized_domain="google.com",
+                match_pattern="%.google.com",
+                count=2,
+            )],
+        ))
+
+        report = executor.execute(plan, dry_run=True)
+
+        # Dry run should report:
+        # - deleted_count = 0 (nothing actually deleted)
+        # - would_delete_count = actual count that would be deleted
+        assert report.results[0].deleted_count == 0
+        assert report.results[0].would_delete_count == 2
+        assert report.total_deleted == 0
+        assert report.total_would_delete == 2
+
     def test_successful_deletion_chromium(self, executor, chromium_db, temp_dir, backup_manager):
         """Successful deletion removes cookies and creates backup."""
         plan = DeletePlan.create(dry_run=False)

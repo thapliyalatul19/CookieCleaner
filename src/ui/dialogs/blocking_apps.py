@@ -15,17 +15,24 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from src.execution import LockReport
+
+
+# Dialog result code for "Close & Retry" action
+CLOSE_AND_RETRY = 2
 
 
 class BlockingAppsDialog(QDialog):
     """
     Dialog showing browser processes blocking cookie databases.
 
-    Allows user to close browsers and retry.
+    Allows user to close browsers and retry, or manually close and retry.
     """
+
+    # Signal emitted when user clicks "Close & Retry" with list of browser names
+    close_browsers_requested = pyqtSignal(list)
 
     def __init__(
         self,
@@ -82,8 +89,10 @@ class BlockingAppsDialog(QDialog):
 
         # Instructions
         instructions = QLabel(
-            "Close the listed browsers and click 'Retry' to continue, "
-            "or click 'Cancel' to abort the operation."
+            "Options:\n"
+            "• 'Close Browsers & Retry' - Automatically close blocking browsers and retry\n"
+            "• 'Retry' - Try again after manually closing browsers\n"
+            "• 'Cancel' - Abort the operation"
         )
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
@@ -97,11 +106,22 @@ class BlockingAppsDialog(QDialog):
         button_layout.addWidget(cancel_btn)
 
         retry_btn = QPushButton("Retry")
-        retry_btn.setDefault(True)
         retry_btn.clicked.connect(self.accept)
         button_layout.addWidget(retry_btn)
 
+        close_retry_btn = QPushButton("Close Browsers && Retry")
+        close_retry_btn.setDefault(True)
+        close_retry_btn.setStyleSheet("font-weight: bold;")
+        close_retry_btn.clicked.connect(self._on_close_and_retry)
+        button_layout.addWidget(close_retry_btn)
+
         layout.addLayout(button_layout)
+
+    def _on_close_and_retry(self) -> None:
+        """Handle Close & Retry button click."""
+        browsers = self.get_blocking_processes()
+        self.close_browsers_requested.emit(browsers)
+        self.done(CLOSE_AND_RETRY)
 
     def get_blocking_processes(self) -> list[str]:
         """Return list of blocking process names."""

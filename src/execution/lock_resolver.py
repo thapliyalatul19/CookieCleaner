@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 # Error code for sharing violation (file locked)
 ERROR_SHARING_VIOLATION = 32
 
+# Browser executable names (lowercase)
+BROWSER_EXECUTABLES = {
+    "chrome.exe",
+    "msedge.exe",
+    "brave.exe",
+    "firefox.exe",
+    "opera.exe",
+    "vivaldi.exe",
+}
+
 # Mapping of path fragments to browser executables
 BROWSER_PATH_MAPPINGS = {
     "chrome": "chrome.exe",
@@ -133,6 +143,114 @@ class LockResolver:
             logger.warning("Error enumerating processes: %s", e)
 
         return browsers
+
+    def preflight_browser_check(self, db_paths: list[Path]) -> dict[str, list[Path]]:
+        """
+        Check which browsers are running that may block the given database paths.
+
+        Args:
+            db_paths: List of database paths to check
+
+        Returns:
+            Dict mapping browser executable names to lists of paths they may block
+        """
+        running = self.get_running_browsers()
+        if not running:
+            return {}
+
+        blocking: dict[str, list[Path]] = {}
+
+        for db_path in db_paths:
+            db_path_lower = str(db_path).lower()
+            for fragment, exe in BROWSER_PATH_MAPPINGS.items():
+                if fragment in db_path_lower and exe.lower() in running:
+                    if exe not in blocking:
+                        blocking[exe] = []
+                    blocking[exe].append(db_path)
+                    break
+
+        return blocking
+
+    def get_browser_pids(self, browser_name: str) -> list[int]:
+        """
+        Get list of process IDs for a browser executable.
+
+        Args:
+            browser_name: Browser executable name (e.g., "chrome.exe")
+
+        Returns:
+            List of process IDs
+        """
+        pids = []
+        browser_name_lower = browser_name.lower()
+
+        try:
+            for proc in psutil.process_iter(["name", "pid"]):
+                try:
+                    name = proc.info["name"]
+                    if name and name.lower() == browser_name_lower:
+                        pids.append(proc.info["pid"])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            logger.warning("Error getting browser PIDs for %s: %s", browser_name, e)
+
+        return pids
+
+    def terminate_browser(self, browser_name: str, timeout: float = 5.0) -> bool:
+        """
+        Gracefully terminate all instances of a browser.
+
+        First attempts graceful termination (SIGTERM), then forceful (SIGKILL).
+
+        Args:
+            browser_name: Browser executable name (e.g., "chrome.exe")
+            timeout: Seconds to wait for graceful termination
+
+        Returns:
+            True if all processes were terminated, False otherwise
+        """
+        pids = self.get_browser_pids(browser_name)
+        if not pids:
+            return True
+
+        processes = []
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                processes.append(proc)
+            except psutil.NoSuchProcess:
+                continue
+
+        if not processes:
+            return True
+
+        # Attempt graceful termination
+        for proc in processes:
+            try:
+                proc.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.debug("Could not terminate %s (PID %d): %s", browser_name, proc.pid, e)
+
+        # Wait for processes to terminate
+        gone, alive = psutil.wait_procs(processes, timeout=timeout)
+
+        # Force kill any remaining processes
+        for proc in alive:
+            try:
+                proc.kill()
+                logger.info("Force killed %s (PID %d)", browser_name, proc.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.warning("Could not kill %s (PID %d): %s", browser_name, proc.pid, e)
+
+        # Verify all terminated
+        remaining = self.get_browser_pids(browser_name)
+        if remaining:
+            logger.warning("Failed to terminate all %s processes: %d remaining", browser_name, len(remaining))
+            return False
+
+        logger.info("Successfully terminated all %s processes", browser_name)
+        return True
 
     def _check_with_win32(self, db_path: Path) -> tuple[bool, int | None]:
         """

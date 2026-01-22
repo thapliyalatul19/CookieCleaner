@@ -49,7 +49,7 @@ class StateManager(QObject):
         AppState.SCANNING: {AppState.READY, AppState.ERROR},
         AppState.READY: {AppState.SCANNING, AppState.CLEANING},
         AppState.CLEANING: {AppState.READY, AppState.ERROR},
-        AppState.ERROR: {AppState.IDLE},
+        AppState.ERROR: {AppState.IDLE, AppState.SCANNING},  # Allow scan from error state
     }
 
     def __init__(self, parent: QObject | None = None) -> None:

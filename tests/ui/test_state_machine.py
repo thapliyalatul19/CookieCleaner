@@ -105,6 +105,17 @@ class TestStateManager:
         assert manager.state == AppState.IDLE
         assert manager.error_message == ""
 
+    def test_valid_transition_error_to_scanning(self):
+        """ERROR -> SCANNING should be valid (allow retry scan after error)."""
+        manager = StateManager()
+        manager.transition_to(AppState.SCANNING)
+        manager.transition_to(AppState.ERROR, "Scan error")
+        assert manager.can_transition_to(AppState.SCANNING)
+        result = manager.transition_to(AppState.SCANNING)
+        assert result is True
+        assert manager.state == AppState.SCANNING
+        assert manager.error_message == ""
+
     def test_invalid_transition_idle_to_ready(self):
         """IDLE -> READY should be invalid."""
         manager = StateManager()

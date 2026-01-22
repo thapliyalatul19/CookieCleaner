@@ -37,16 +37,12 @@ class ChromiumProfileResolver:
             if not entry.is_dir():
                 continue
 
-            if not self._is_profile_dir(entry.name):
+            if not self._is_profile_dir(entry):
                 continue
 
             cookie_db = self._find_cookie_db(entry)
+            # Cookie db should exist since _is_profile_dir checks for it
             if cookie_db is None:
-                logger.debug(
-                    "%s profile %s has no cookie database",
-                    self.config.name,
-                    entry.name,
-                )
                 continue
 
             yield BrowserStore(
@@ -57,18 +53,24 @@ class ChromiumProfileResolver:
                 local_state_path=local_state_path,
             )
 
-    def _is_profile_dir(self, name: str) -> bool:
-        """Check if directory name represents a valid profile."""
-        if name in CHROMIUM_SKIP_DIRS:
+    def _is_profile_dir(self, entry: Path) -> bool:
+        """
+        Check if directory represents a valid profile.
+
+        Accepts any directory not in CHROMIUM_SKIP_DIRS that contains a cookie database.
+        This supports custom profile names beyond just "Default" and "Profile N".
+
+        Args:
+            entry: Path to the potential profile directory
+
+        Returns:
+            True if this is a valid profile directory
+        """
+        if entry.name in CHROMIUM_SKIP_DIRS:
             return False
 
-        # Valid profiles: "Default" or "Profile N"
-        if name == "Default":
-            return True
-        if name.startswith("Profile "):
-            return True
-
-        return False
+        # Verify it's a profile by checking for cookie database
+        return self._find_cookie_db(entry) is not None
 
     def _find_cookie_db(self, profile_dir: Path) -> Path | None:
         """Find cookie database in profile directory."""

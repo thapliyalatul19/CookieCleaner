@@ -148,3 +148,64 @@ class TestChromiumProfileResolver:
         assert default_profile.browser_name == "TestChrome"
         assert default_profile.is_chromium is True
         assert default_profile.db_path.exists()
+
+    def test_discovers_custom_named_profiles(self, tmp_path: Path) -> None:
+        """Should discover profiles with custom names (not just Default/Profile N)."""
+        user_data = tmp_path / "User Data"
+        user_data.mkdir()
+
+        # Create Local State
+        (user_data / "Local State").write_text("{}")
+
+        # Create a custom-named profile with cookies
+        custom_profile = user_data / "My Work Profile"
+        custom_profile.mkdir()
+        network_dir = custom_profile / "Network"
+        network_dir.mkdir()
+        (network_dir / "Cookies").write_text("")
+
+        # Create another custom-named profile
+        custom_profile2 = user_data / "Personal"
+        custom_profile2.mkdir()
+        (custom_profile2 / "Cookies").write_text("")  # Legacy location
+
+        config = BrowserConfig(
+            name="TestChrome",
+            user_data_path=user_data,
+            is_chromium=True,
+            executable_name="chrome.exe",
+        )
+        resolver = ChromiumProfileResolver(config)
+        profiles = resolver.discover()
+
+        profile_ids = {p.profile_id for p in profiles}
+        assert "My Work Profile" in profile_ids
+        assert "Personal" in profile_ids
+        assert len(profiles) == 2
+
+    def test_ignores_directories_without_cookies(self, tmp_path: Path) -> None:
+        """Should ignore custom-named directories that don't have cookie databases."""
+        user_data = tmp_path / "User Data"
+        user_data.mkdir()
+
+        # Create directories without cookies (should be skipped)
+        (user_data / "RandomFolder").mkdir()
+        (user_data / "SomeOtherDir").mkdir()
+
+        # Create one valid profile
+        valid_profile = user_data / "ValidProfile"
+        valid_profile.mkdir()
+        (valid_profile / "Network").mkdir()
+        (valid_profile / "Network" / "Cookies").write_text("")
+
+        config = BrowserConfig(
+            name="TestChrome",
+            user_data_path=user_data,
+            is_chromium=True,
+            executable_name="chrome.exe",
+        )
+        resolver = ChromiumProfileResolver(config)
+        profiles = resolver.discover()
+
+        assert len(profiles) == 1
+        assert profiles[0].profile_id == "ValidProfile"

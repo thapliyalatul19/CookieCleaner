@@ -206,7 +206,8 @@ class TestDryRunWorkflow:
         # Verify report
         assert report.success
         assert report.dry_run
-        assert report.total_deleted > 0  # Reports what WOULD be deleted
+        assert report.total_would_delete > 0  # Reports what WOULD be deleted
+        assert report.total_deleted == 0  # No actual deletion in dry run
 
         # Verify no actual changes
         final_count = count_cookies_in_chromium_db(chrome_store.db_path)

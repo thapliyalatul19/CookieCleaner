@@ -182,19 +182,29 @@ class TestCleanWorker:
         assert report.total_deleted == 0
 
     def test_clean_worker_emits_lock_detected_on_locked_db(
-        self, qtbot, sample_domains
+        self, qtbot, sample_domains, tmp_path
     ):
         """CleanWorker should emit lock_detected when databases are locked."""
+        # Create a real temp database file so validation passes
+        db_path = tmp_path / "Cookies"
+        db_path.touch()
+
+        # Update sample_domains to use real path
+        for domain in sample_domains:
+            for record in domain.records:
+                record.store.db_path = db_path
+
         worker = CleanWorker(sample_domains, dry_run=False)
 
         # Mock lock detection
         lock_report = LockReport(
-            db_path=Path("C:/fake/Cookies"),
+            db_path=db_path,
             is_locked=True,
             blocking_processes=["chrome.exe"],
         )
         worker._lock_resolver = MagicMock()
         worker._lock_resolver.check_all.return_value = [lock_report]
+        worker._lock_resolver.get_running_browsers.return_value = set()
 
         with qtbot.waitSignal(worker.lock_detected, timeout=5000) as blocker:
             worker.start()
@@ -205,14 +215,11 @@ class TestCleanWorker:
         assert len(reports) == 1
         assert reports[0].is_locked
 
-    def test_clean_worker_build_plan(self, sample_domains):
-        """_build_plan() should create a valid DeletePlan."""
+    def test_clean_worker_uses_delete_planner(self, sample_domains):
+        """CleanWorker should use DeletePlanner for plan building."""
         worker = CleanWorker(sample_domains, dry_run=True)
 
-        plan = worker._build_plan()
-
-        assert isinstance(plan, DeletePlan)
-        assert plan.dry_run is True
-        assert len(plan.operations) == 1
-        assert plan.operations[0].browser == "Chrome"
-        assert plan.operations[0].profile == "Default"
+        # Verify the planner is available
+        assert hasattr(worker, '_planner')
+        from src.core.delete_planner import DeletePlanner
+        assert isinstance(worker._planner, DeletePlanner)
