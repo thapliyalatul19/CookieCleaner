@@ -49,7 +49,7 @@ class TestLoadPublicSuffixes:
 
     def test_uses_fallback_when_file_missing(self, tmp_path: Path) -> None:
         """Uses fallback when PSL file doesn't exist."""
-        with patch("src.core.psl_loader._PSL_DATA_FILE", tmp_path / "nonexistent.dat"):
+        with patch("src.core.psl_loader._get_psl_path", return_value=tmp_path / "nonexistent.dat"):
             clear_cache()
             suffixes = load_public_suffixes()
 
@@ -156,12 +156,13 @@ class TestWhitelistPSLIntegration:
 
         assert is_valid is True
 
-    def test_exact_prefix_allows_public_suffix_with_warning(self) -> None:
-        """exact: prefix allows public suffixes (with warning logged)."""
+    def test_exact_prefix_rejects_public_suffix(self) -> None:
+        """exact: prefix rejects public suffixes (PRD requirement)."""
         from src.core.whitelist import WhitelistManager
 
         manager = WhitelistManager([])
         is_valid, error = manager.validate_entry("exact:co.uk")
 
-        # Should be valid but warning is logged
-        assert is_valid is True
+        # Should be invalid - public suffixes are rejected for exact: prefix
+        assert is_valid is False
+        assert "Public suffix" in error

@@ -168,9 +168,12 @@ class DeleteExecutor:
         can_proceed, preflight_error = self._preflight_lock_check(op.db_path)
         if not can_proceed:
             logger.warning("Preflight lock check failed for %s: %s", op.db_path, preflight_error)
-            # Try to identify blocking processes
-            blocking = self.lock_resolver._find_blocking_processes(op.db_path)
-            processes = ", ".join(blocking) or "unknown process"
+            # Try to identify blocking processes using public method
+            blocking, blocker_unknown = self.lock_resolver.find_blocking_processes(op.db_path)
+            if blocker_unknown or not blocking:
+                processes = "unknown process"
+            else:
+                processes = ", ".join(blocking)
             return DeleteResult(
                 browser=op.browser,
                 profile=op.profile,

@@ -27,6 +27,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
+        # Public Suffix List data file
+        ('data/public_suffix_list.dat', 'data'),
         # Include any assets if they exist
         # ('assets/icon.ico', 'assets'),
     ],

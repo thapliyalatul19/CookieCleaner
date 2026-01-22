@@ -30,6 +30,7 @@ class CleanWorker(QThread):
     progress = pyqtSignal(str, int, int)  # (message, current, total)
     finished = pyqtSignal(object)  # DeleteReport
     lock_detected = pyqtSignal(list)  # list[LockReport]
+    browsers_running = pyqtSignal(list)  # list[str] of browser executables blocking operation
     error = pyqtSignal(str, str)  # (error_type, error_message)
 
     def __init__(
@@ -104,12 +105,15 @@ class CleanWorker(QThread):
                             if name in browser_name and exe in running_browsers:
                                 browsers_with_targets.add(exe)
 
-                # If we have conflicts, we can continue but locks will be detected later
+                # If we have conflicts, block the clean operation
+                # User must close browsers before proceeding (PRD safety requirement)
                 if browsers_with_targets:
-                    logger.info(
-                        "Preflight warning: Browsers with target cookies are running: %s",
+                    logger.warning(
+                        "Preflight check blocked: Browsers with target cookies are running: %s",
                         browsers_with_targets,
                     )
+                    self.browsers_running.emit(list(browsers_with_targets))
+                    return
 
             if not self._domains:
                 self.progress.emit("No domains to delete", 0, 0)

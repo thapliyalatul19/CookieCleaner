@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 from src.core.models import (
@@ -31,6 +32,7 @@ class DeletePlanner:
         self,
         domains: list[DomainAggregate],
         dry_run: bool = False,
+        backup_dir: Path | None = None,
     ) -> DeletePlan:
         """
         Build a DeletePlan from a list of domain aggregates.
@@ -40,6 +42,8 @@ class DeletePlanner:
         Args:
             domains: List of DomainAggregate instances to delete
             dry_run: Whether this is a dry run simulation
+            backup_dir: Optional directory for backups. If provided, generates
+                       actual backup paths instead of placeholders.
 
         Returns:
             DeletePlan with operations for each browser profile
@@ -61,9 +65,14 @@ class DeletePlanner:
                 )
                 profile_records[key].append(record)
 
+        # Generate timestamp for backup filenames
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         # Create operations for each profile
         for (browser, profile, db_path), records in profile_records.items():
-            operation = self._build_operation(browser, profile, db_path, records)
+            operation = self._build_operation(
+                browser, profile, db_path, records, backup_dir, timestamp
+            )
             plan.add_operation(operation)
 
         logger.debug(
@@ -81,6 +90,8 @@ class DeletePlanner:
         profile: str,
         db_path: Path,
         records: list,
+        backup_dir: Path | None = None,
+        timestamp: str | None = None,
     ) -> DeleteOperation:
         """
         Build a single DeleteOperation from cookie records.
@@ -90,6 +101,8 @@ class DeletePlanner:
             profile: Profile ID
             db_path: Path to cookie database
             records: List of CookieRecord instances
+            backup_dir: Optional directory for backups
+            timestamp: Optional timestamp string for backup filename
 
         Returns:
             DeleteOperation for this browser profile
@@ -113,8 +126,16 @@ class DeletePlanner:
                 count=count,
             ))
 
-        # Placeholder backup path (BackupManager generates actual path)
-        backup_path = Path(".")
+        # Generate backup path if backup_dir provided
+        if backup_dir is not None and timestamp:
+            # Sanitize browser/profile names for filesystem
+            safe_browser = browser.replace(" ", "_").replace("/", "_")
+            safe_profile = profile.replace(" ", "_").replace("/", "_")
+            backup_filename = f"{safe_browser}_{safe_profile}_{timestamp}.db"
+            backup_path = backup_dir / backup_filename
+        else:
+            # Placeholder - BackupManager generates actual path during execution
+            backup_path = Path(".")
 
         return DeleteOperation(
             browser=browser,

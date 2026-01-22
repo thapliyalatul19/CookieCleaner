@@ -289,6 +289,7 @@ class MainWindow(QMainWindow):
         self._clean_worker.progress.connect(self._on_clean_progress)
         self._clean_worker.finished.connect(self._on_clean_finished)
         self._clean_worker.lock_detected.connect(self._on_lock_detected)
+        self._clean_worker.browsers_running.connect(self._on_browsers_running)
         self._clean_worker.error.connect(self._on_clean_error)
         self._clean_worker.start()
 
@@ -339,6 +340,31 @@ class MainWindow(QMainWindow):
             # User wants to retry after manually closing browsers
             self._on_clean_clicked()
         # else: user cancelled
+
+    def _on_browsers_running(self, browsers: list[str]) -> None:
+        """Handle preflight detection of running browsers."""
+        # Return to READY state
+        try:
+            self._state_manager.clean_complete()
+        except InvalidTransitionError:
+            pass
+
+        # Show dialog with blocking browsers
+        browser_names = ", ".join(browsers)
+        result = QMessageBox.warning(
+            self,
+            "Browsers Running",
+            f"The following browsers are running and have cookies to delete:\n\n"
+            f"{browser_names}\n\n"
+            "Please close these browsers to continue cleaning cookies.",
+            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Abort,
+            QMessageBox.StandardButton.Abort,
+        )
+
+        if result == QMessageBox.StandardButton.Retry:
+            # User closed browsers manually and wants to retry
+            self._on_clean_clicked()
+        # else: user chose to abort
 
     def _close_browsers_and_retry(self, browsers: list[str]) -> None:
         """
@@ -593,7 +619,7 @@ class MainWindow(QMainWindow):
             "Chrome": appdata_local / "Google" / "Chrome" / "User Data",
             "Edge": appdata_local / "Microsoft" / "Edge" / "User Data",
             "Brave": appdata_local / "BraveSoftware" / "Brave-Browser" / "User Data",
-            "Opera": appdata_roaming / "Opera Software" / "Opera Stable",
+            "Opera": appdata_local / "Opera Software" / "Opera Stable",  # Opera uses LOCALAPPDATA
             "Vivaldi": appdata_local / "Vivaldi" / "User Data",
             "Firefox": appdata_roaming / "Mozilla" / "Firefox" / "Profiles",
         }

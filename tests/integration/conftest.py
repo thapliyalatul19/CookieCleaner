@@ -684,6 +684,8 @@ def unlocked_lock_resolver() -> MagicMock:
     def check_lock_side_effect(db_path):
         return LockReport(db_path=db_path, is_locked=False, blocking_processes=[])
     mock.check_lock.side_effect = check_lock_side_effect
+    # find_blocking_processes returns (list, bool) tuple
+    mock.find_blocking_processes.return_value = ([], True)
     return mock
 
 
@@ -696,6 +698,8 @@ def locked_lock_resolver() -> MagicMock:
     def check_lock_side_effect(db_path):
         return LockReport(db_path=db_path, is_locked=True, blocking_processes=["chrome.exe"])
     mock.check_lock.side_effect = check_lock_side_effect
+    # find_blocking_processes returns (list, bool) tuple
+    mock.find_blocking_processes.return_value = (["chrome.exe"], False)
     return mock
 
 

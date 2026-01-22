@@ -2,18 +2,32 @@
 
 Provides functions to load and query the Public Suffix List (PSL)
 for domain validation in whitelist entries.
+
+Note on PSL parsing limitations:
+- Wildcard rules (e.g., *.ck) are handled by adding the base suffix
+- Exception rules (e.g., !www.ck) are not fully handled
+- Full PSL parsing is complex; this implementation covers common cases
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Path to bundled PSL file
-_PSL_DATA_FILE = Path(__file__).parent.parent.parent / "data" / "public_suffix_list.dat"
+
+def _get_psl_path() -> Path:
+    """Get the path to the PSL data file, handling frozen builds."""
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle
+        base_path = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        return base_path / "data" / "public_suffix_list.dat"
+    else:
+        # Running from source
+        return Path(__file__).parent.parent.parent / "data" / "public_suffix_list.dat"
 
 # Fallback minimal PSL if file not found
 _FALLBACK_SUFFIXES = frozenset({
@@ -67,13 +81,15 @@ def load_public_suffixes() -> frozenset[str]:
     Returns:
         Frozenset of public suffix strings
     """
-    if not _PSL_DATA_FILE.exists():
-        logger.debug("PSL data file not found, using fallback list")
+    psl_path = _get_psl_path()
+
+    if not psl_path.exists():
+        logger.debug("PSL data file not found at %s, using fallback list", psl_path)
         return _FALLBACK_SUFFIXES
 
     try:
         suffixes = set()
-        with open(_PSL_DATA_FILE, "r", encoding="utf-8") as f:
+        with open(psl_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
 
@@ -81,17 +97,21 @@ def load_public_suffixes() -> frozenset[str]:
                 if not line or line.startswith("//"):
                     continue
 
-                # Skip wildcard and exception rules for simplicity
-                # (full PSL parsing is complex; we just need the basic suffixes)
-                if line.startswith("*.") or line.startswith("!"):
-                    # For wildcards, add the base suffix
-                    if line.startswith("*."):
-                        suffixes.add(line[2:])
+                # Handle wildcard rules (e.g., *.ck)
+                # Add the base suffix for wildcards
+                if line.startswith("*."):
+                    suffixes.add(line[2:])
+                    continue
+
+                # Skip exception rules (e.g., !www.ck) - these are complex to handle
+                # Exception rules indicate domains that are NOT public suffixes
+                # despite the wildcard rule above them
+                if line.startswith("!"):
                     continue
 
                 suffixes.add(line)
 
-        logger.info("Loaded %d public suffixes from %s", len(suffixes), _PSL_DATA_FILE)
+        logger.info("Loaded %d public suffixes from %s", len(suffixes), psl_path)
         return frozenset(suffixes)
 
     except OSError as e:

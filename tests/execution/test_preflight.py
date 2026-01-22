@@ -132,22 +132,24 @@ class TestTerminateBrowser:
         mock_proc.terminate.assert_called_once()
         assert result is True
 
-    def test_force_kills_stubborn_processes(self) -> None:
-        """Force kills processes that don't terminate gracefully."""
+    def test_returns_false_when_graceful_termination_fails(self) -> None:
+        """Returns False (no force kill) when processes don't terminate gracefully."""
         resolver = LockResolver()
 
         mock_proc = MagicMock()
         mock_proc.pid = 1234
 
-        with patch.object(resolver, "get_browser_pids", side_effect=[[1234], []]):
+        with patch.object(resolver, "get_browser_pids", side_effect=[[1234], [1234]]):
             with patch("psutil.Process", return_value=mock_proc):
                 # Process stays alive after terminate
                 with patch("psutil.wait_procs", return_value=([], [mock_proc])):
                     result = resolver.terminate_browser("chrome.exe")
 
         mock_proc.terminate.assert_called_once()
-        mock_proc.kill.assert_called_once()
-        assert result is True
+        # kill() should NOT be called - we removed force-kill to avoid browser profile corruption
+        mock_proc.kill.assert_not_called()
+        # Returns False since graceful termination failed
+        assert result is False
 
     def test_returns_false_when_termination_fails(self) -> None:
         """Returns False when processes cannot be terminated."""

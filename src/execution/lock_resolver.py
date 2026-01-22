@@ -54,6 +54,7 @@ class LockReport:
     is_locked: bool
     error_code: int | None = None
     blocking_processes: list[str] = field(default_factory=list)
+    blocker_unknown: bool = False  # True if lock detected but blocker cannot be identified
 
     @property
     def can_proceed(self) -> bool:
@@ -90,6 +91,7 @@ class LockResolver:
         is_locked = False
         error_code = None
         blocking_processes = []
+        blocker_unknown = False
 
         if HAS_WIN32:
             is_locked, error_code = self._check_with_win32(db_path)
@@ -97,13 +99,14 @@ class LockResolver:
             is_locked = self._check_with_open(db_path)
 
         if is_locked:
-            blocking_processes = self._find_blocking_processes(db_path)
+            blocking_processes, blocker_unknown = self.find_blocking_processes(db_path)
 
         return LockReport(
             db_path=db_path,
             is_locked=is_locked,
             error_code=error_code,
             blocking_processes=blocking_processes,
+            blocker_unknown=blocker_unknown,
         )
 
     def check_all(self, db_paths: list[Path]) -> list[LockReport]:
@@ -201,14 +204,16 @@ class LockResolver:
         """
         Gracefully terminate all instances of a browser.
 
-        First attempts graceful termination (SIGTERM), then forceful (SIGKILL).
+        Only attempts graceful termination (SIGTERM). Does NOT escalate to
+        force-kill (SIGKILL) to avoid corrupting browser profiles.
 
         Args:
             browser_name: Browser executable name (e.g., "chrome.exe")
             timeout: Seconds to wait for graceful termination
 
         Returns:
-            True if all processes were terminated, False otherwise
+            True if all processes were terminated gracefully, False otherwise.
+            If False, the UI should guide the user to close browsers manually.
         """
         pids = self.get_browser_pids(browser_name)
         if not pids:
@@ -225,7 +230,7 @@ class LockResolver:
         if not processes:
             return True
 
-        # Attempt graceful termination
+        # Attempt graceful termination only
         for proc in processes:
             try:
                 proc.terminate()
@@ -235,21 +240,17 @@ class LockResolver:
         # Wait for processes to terminate
         gone, alive = psutil.wait_procs(processes, timeout=timeout)
 
-        # Force kill any remaining processes
-        for proc in alive:
-            try:
-                proc.kill()
-                logger.info("Force killed %s (PID %d)", browser_name, proc.pid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                logger.warning("Could not kill %s (PID %d): %s", browser_name, proc.pid, e)
-
-        # Verify all terminated
-        remaining = self.get_browser_pids(browser_name)
-        if remaining:
-            logger.warning("Failed to terminate all %s processes: %d remaining", browser_name, len(remaining))
+        # If processes remain after graceful termination, return False
+        # Do NOT force-kill to avoid browser profile corruption (PRD safety contract)
+        if alive:
+            logger.warning(
+                "Graceful termination failed for %s: %d process(es) still running. "
+                "User should close browser manually.",
+                browser_name, len(alive)
+            )
             return False
 
-        logger.info("Successfully terminated all %s processes", browser_name)
+        logger.info("Successfully terminated all %s processes gracefully", browser_name)
         return True
 
     def _check_with_win32(self, db_path: Path) -> tuple[bool, int | None]:
@@ -294,17 +295,20 @@ class LockResolver:
         except OSError:
             return False
 
-    def _find_blocking_processes(self, db_path: Path) -> list[str]:
+    def find_blocking_processes(self, db_path: Path) -> tuple[list[str], bool]:
         """
         Find browser processes likely blocking the database.
+
+        Public method for identifying processes blocking a database file.
 
         Args:
             db_path: Path to the locked database
 
         Returns:
-            List of browser executable names that may be blocking
+            Tuple of (blocking_processes, blocker_unknown):
+            - blocking_processes: List of browser executable names that may be blocking
+            - blocker_unknown: True if lock detected but blocker cannot be identified
         """
-        blocking = []
         db_path_lower = str(db_path).lower()
 
         # Determine which browser this database belongs to
@@ -317,9 +321,15 @@ class LockResolver:
         if browser_exe:
             running = self.get_running_browsers()
             if browser_exe.lower() in running:
-                blocking.append(browser_exe)
+                return [browser_exe], False
+            # Browser identified but not running - unknown cause of lock
+            return [], True
         else:
-            # Unknown browser - report all running browsers
-            blocking = list(self.get_running_browsers())
-
-        return blocking
+            # Unknown browser - cannot offer auto-close
+            # Return empty list instead of all running browsers (safety)
+            logger.warning(
+                "Lock detected on %s but cannot identify blocker. "
+                "User should close browsers manually.",
+                db_path
+            )
+            return [], True

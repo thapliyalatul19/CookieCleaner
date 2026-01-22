@@ -150,13 +150,10 @@ class WhitelistManager:
                 if value == two_part and two_part in public_suffixes:
                     return False, f"Public suffix '{value}' cannot be used with domain: prefix (too broad)"
 
-        # For exact: prefix, warn about public suffixes (but allow)
+        # For exact: prefix, reject public suffixes (PRD requirement)
         if prefix == "exact":
             if is_public_suffix(value):
-                logger.warning(
-                    "Warning: exact: prefix with public suffix '%s' may match unexpected cookies",
-                    value,
-                )
+                return False, f"Public suffix '{value}' cannot be used with exact: prefix (too broad)"
 
         return True, ""
 

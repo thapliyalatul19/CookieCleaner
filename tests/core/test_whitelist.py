@@ -198,10 +198,11 @@ class TestPublicSuffixGuardrail:
         valid, _ = WhitelistManager.validate_entry("domain:example.co.uk")
         assert valid is True
 
-    def test_exact_allows_public_suffix(self):
-        """exact: prefix allows public suffixes (edge case, unlikely)."""
-        valid, _ = WhitelistManager.validate_entry("exact:com")
-        assert valid is True
+    def test_exact_rejects_public_suffix(self):
+        """exact: prefix rejects public suffixes (PRD requirement)."""
+        valid, error = WhitelistManager.validate_entry("exact:com")
+        assert valid is False
+        assert "Public suffix" in error
 
     def test_public_suffixes_constant_exists(self):
         """PUBLIC_SUFFIXES constant contains expected entries."""

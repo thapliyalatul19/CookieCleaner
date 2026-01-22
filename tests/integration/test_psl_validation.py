@@ -107,14 +107,15 @@ class TestWhitelistPSLEnforcement:
             is_valid, error = manager.validate_entry(f"domain:{domain}")
             assert is_valid is True, f"Should accept domain:{domain}, got error: {error}"
 
-    def test_exact_prefix_allows_public_suffix(self) -> None:
-        """exact: prefix allows public suffixes (for edge cases)."""
+    def test_exact_prefix_rejects_public_suffix(self) -> None:
+        """exact: prefix rejects public suffixes (PRD requirement)."""
         manager = WhitelistManager([])
 
-        # These should be allowed (with warning logged)
+        # These should be rejected - public suffixes are too broad
         for suffix in ["com", "co.uk"]:
             is_valid, error = manager.validate_entry(f"exact:{suffix}")
-            assert is_valid is True, f"exact: should allow {suffix}"
+            assert is_valid is False, f"exact: should reject {suffix}"
+            assert "Public suffix" in error
 
 
 class TestPSLHelperFunctions:

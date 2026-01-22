@@ -90,23 +90,25 @@ class TestProcessDetectionGate:
         assert 5678 in pids
         assert 9999 not in pids
 
-    def test_terminate_browser_graceful_then_force(self) -> None:
-        """terminate_browser tries graceful termination before force kill."""
+    def test_terminate_browser_graceful_only(self) -> None:
+        """terminate_browser only tries graceful termination (no force kill)."""
         resolver = LockResolver()
 
         # Mock process that doesn't terminate gracefully
         mock_proc = MagicMock()
         mock_proc.pid = 1234
 
-        with patch.object(resolver, "get_browser_pids", side_effect=[[1234], []]):
+        with patch.object(resolver, "get_browser_pids", side_effect=[[1234], [1234]]):
             with patch("psutil.Process", return_value=mock_proc):
                 with patch("psutil.wait_procs", return_value=([], [mock_proc])):
                     result = resolver.terminate_browser("chrome.exe")
 
-        # Should try terminate first
+        # Should try terminate
         mock_proc.terminate.assert_called_once()
-        # Then force kill
-        mock_proc.kill.assert_called_once()
+        # Should NOT force kill (removed to avoid browser profile corruption)
+        mock_proc.kill.assert_not_called()
+        # Returns False since process didn't terminate
+        assert result is False
 
     def test_check_lock_detects_blocking_process(self, tmp_path: Path) -> None:
         """check_lock identifies which browser is blocking."""

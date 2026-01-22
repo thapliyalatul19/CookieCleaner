@@ -145,16 +145,18 @@ class TestLockDetectionWithMocks:
             path.unlink()
 
     @patch.object(LockResolver, "_check_with_win32")
-    @patch.object(LockResolver, "_find_blocking_processes")
+    @patch.object(LockResolver, "find_blocking_processes")
     def test_locked_file_returns_blocking_processes(
         self, mock_find_blocking, mock_check_win32, resolver, temp_file
     ):
         """Locked file includes blocking processes in report."""
         mock_check_win32.return_value = (True, 32)
-        mock_find_blocking.return_value = ["chrome.exe"]
+        # find_blocking_processes now returns (list, bool) tuple
+        mock_find_blocking.return_value = (["chrome.exe"], False)
 
         report = resolver.check_lock(temp_file)
 
         assert report.is_locked is True
         assert report.error_code == 32
         assert "chrome.exe" in report.blocking_processes
+        assert report.blocker_unknown is False

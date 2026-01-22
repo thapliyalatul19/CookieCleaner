@@ -6,10 +6,11 @@ Validates DeletePlan instances before execution to catch errors early.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.core.models import DeletePlan
+from src.core.models import DeletePlan, DeleteOperation
 from src.core.whitelist import WhitelistManager
 
 logger = logging.getLogger(__name__)
@@ -63,16 +64,23 @@ class DeletePlanValidator:
     - Database paths exist
     - Target counts are positive
     - No overlap with whitelist entries
+    - Optional: DB count verification
     """
 
-    def __init__(self, whitelist_manager: WhitelistManager | None = None) -> None:
+    def __init__(
+        self,
+        whitelist_manager: WhitelistManager | None = None,
+        verify_counts: bool = False,
+    ) -> None:
         """
         Initialize the validator.
 
         Args:
             whitelist_manager: Optional WhitelistManager for checking overlap
+            verify_counts: If True, verify target counts match database
         """
         self._whitelist_manager = whitelist_manager
+        self._verify_counts = verify_counts
 
     def validate(self, plan: DeletePlan) -> ValidationResult:
         """
@@ -129,6 +137,19 @@ class DeletePlanValidator:
                             target_index=target_idx,
                         )
 
+            # Optional: Verify counts match database
+            if self._verify_counts:
+                count_mismatches = self._verify_db_counts(operation)
+                for target_idx, (expected, actual) in count_mismatches:
+                    target = operation.targets[target_idx]
+                    result.add_warning(
+                        "COUNT_MISMATCH",
+                        f"Target '{target.normalized_domain}' count mismatch: "
+                        f"expected {expected}, found {actual} in database",
+                        operation_index=op_idx,
+                        target_index=target_idx,
+                    )
+
         if result.errors:
             logger.warning(
                 "Plan validation failed with %d errors: %s",
@@ -145,3 +166,51 @@ class DeletePlanValidator:
             logger.debug("Plan validation passed for plan %s", plan.plan_id)
 
         return result
+
+    def _verify_db_counts(
+        self, operation: DeleteOperation
+    ) -> list[tuple[int, tuple[int, int]]]:
+        """
+        Verify target counts match actual database counts.
+
+        Args:
+            operation: DeleteOperation to verify
+
+        Returns:
+            List of (target_index, (expected_count, actual_count)) for mismatches
+        """
+        mismatches = []
+
+        if not operation.db_path.exists():
+            return mismatches
+
+        try:
+            conn = sqlite3.connect(str(operation.db_path), timeout=5.0)
+            try:
+                cursor = conn.cursor()
+
+                # Determine if Chromium or Firefox
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='cookies'"
+                )
+                is_chromium = cursor.fetchone() is not None
+
+                for target_idx, target in enumerate(operation.targets):
+                    if is_chromium:
+                        sql = "SELECT COUNT(*) FROM cookies WHERE host_key LIKE ?"
+                    else:
+                        sql = "SELECT COUNT(*) FROM moz_cookies WHERE host LIKE ?"
+
+                    cursor.execute(sql, (target.match_pattern,))
+                    result = cursor.fetchone()
+                    actual_count = result[0] if result else 0
+
+                    if actual_count != target.count:
+                        mismatches.append((target_idx, (target.count, actual_count)))
+
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            logger.warning("Could not verify counts for %s: %s", operation.db_path, e)
+
+        return mismatches
