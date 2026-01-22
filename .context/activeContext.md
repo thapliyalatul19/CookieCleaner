@@ -1,9 +1,25 @@
 # Active Context
 
 ## Current Phase
-Phase 2.4: Delete Engine Implementation
+Phase 2.3: Chromium Cookie Decryptor
 
 ## Recent Changes
+
+### 2026-01-21: Phase 2.3 Chromium Cookie Decryptor Complete
+- **Files changed:**
+  - `src/scanner/decryptor.py` (new) - ChromiumDecryptor class with DPAPI + AES-GCM decryption
+  - `src/scanner/__init__.py` (updated) - Added decryptor module exports
+  - `tests/scanner/test_decryptor.py` (new) - 29 comprehensive test cases
+- **Summary:**
+  - Implemented ChromiumDecryptor class for cookie value decryption
+  - Master key extraction from Local State JSON via Windows DPAPI
+  - AES-256-GCM decryption for v10/v11 prefixed values (Chrome 80+)
+  - Legacy DPAPI decryption fallback for pre-v80 values
+  - Graceful failure (returns None) when decryption unavailable
+  - Factory function with LRU cache for instance reuse
+  - All 243 tests passing (214 existing + 29 new decryptor tests)
+  - Safety verified: No DELETE statements in decryptor module
+- **Next step:** Commit Phase 2.3 changes
 
 ### 2026-01-21: Phase 2.4 Delete Engine Complete
 - **Files changed:**

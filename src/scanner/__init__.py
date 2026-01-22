@@ -18,6 +18,7 @@ from src.scanner.cookie_reader import BaseCookieReader, create_reader
 from src.scanner.chromium_cookie_reader import ChromiumCookieReader
 from src.scanner.firefox_cookie_reader import FirefoxCookieReader
 from src.scanner.db_copy import copy_db_to_temp, cleanup_temp_db
+from src.scanner.decryptor import ChromiumDecryptor, DecryptionError, get_decryptor
 
 __all__ = [
     # Profile resolvers
@@ -42,4 +43,8 @@ __all__ = [
     # Utilities
     "copy_db_to_temp",
     "cleanup_temp_db",
+    # Decryption
+    "ChromiumDecryptor",
+    "DecryptionError",
+    "get_decryptor",
 ]
