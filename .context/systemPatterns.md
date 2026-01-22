@@ -93,6 +93,12 @@ class DomainAggregate:
 
 ## Decisions Log
 
+### 2026-01-21: Delete Engine Safety Architecture
+- **Decision:** Enforce strict safety hierarchy: lock check → backup → transaction → delete
+- **Components:** LockResolver (pywin32 + psutil), BackupManager (shutil), DeleteExecutor (sqlite3)
+- **Rationale:** Ensures no data loss - database is never modified without backup, and transactions rollback on failure
+- **Verification:** DELETE statements grep-verified to only exist in delete_executor.py
+
 ### 2026-01-21: Repository Initialized
 - **Decision:** Create repo outside OneDrive to avoid sync conflicts
 - **Location:** `C:\dev\cookie-cleaner`
