@@ -1,9 +1,75 @@
 # Active Context
 
 ## Current Phase
-Phase 2.3: Chromium Cookie Decryptor
+Phase 4: Testing & Packaging (Complete)
 
 ## Recent Changes
+
+### 2026-01-22: Phase 4 Testing & Packaging Complete
+- **Files changed:**
+  - `tests/integration/__init__.py` (new) - Integration test package
+  - `tests/integration/conftest.py` (new) - Golden fixture factory with 5 fixture types
+  - `tests/integration/test_boundary_rules.py` (new) - 12 domain boundary isolation tests
+  - `tests/integration/test_host_key_forms.py` (new) - 8 host key format tests
+  - `tests/integration/test_lock_handling.py` (new) - 8 lock detection/handling tests
+  - `tests/integration/test_conflicting_whitelist.py` (new) - 10 whitelist conflict tests
+  - `tests/integration/test_corrupted_db.py` (new) - 12 edge case/error handling tests
+  - `tests/integration/test_scan_workflow.py` (new) - 12 full scan workflow tests
+  - `tests/integration/test_clean_workflow.py` (new) - 10 full clean workflow tests
+  - `tests/integration/test_whitelist_persistence.py` (new) - 14 whitelist persistence tests
+  - `tests/integration/test_performance.py` (new) - 10 performance tests (<100ms for 1000 domains)
+  - `cookie_cleaner.spec` (new) - PyInstaller spec for standalone Windows executable
+  - `build.ps1` (new) - Windows build script with test/lint/build steps
+  - `scripts/build_installer.ps1` (new) - Full installer build script
+- **Summary:**
+  - Implemented 96 integration tests covering all PRD 12.1 acceptance criteria
+  - Golden fixtures (A-E) test domain boundaries, host key forms, locks, whitelist conflicts, corrupted DBs
+  - Performance tests verify <100ms filter time for 1000+ domains
+  - Full test suite now has 400 passing tests (304 unit + 96 integration)
+  - PyInstaller configured for GUI-only Windows executable (no console)
+  - Build scripts support clean builds, test execution, and version info
+- **Next step:** Commit Phase 4 changes
+
+### 2026-01-22: Phase 3 PyQt6 User Interface Complete
+- **Files changed:**
+  - `src/ui/__init__.py` (updated) - Package exports for all UI modules
+  - `src/ui/state_machine.py` (new) - AppState enum, StateManager with FSM enforcement
+  - `src/ui/app.py` (new) - QApplication initialization, theme setup
+  - `src/ui/main_window.py` (new) - MainWindow class with dual-pane layout
+  - `src/ui/widgets/__init__.py` (new) - Widgets package exports
+  - `src/ui/widgets/searchable_list.py` (new) - SearchableListWidget with real-time filtering
+  - `src/ui/widgets/transfer_controls.py` (new) - TransferControls (> / < buttons)
+  - `src/ui/widgets/toolbar.py` (new) - MainToolbar with Scan/Clean/Settings/Restore + Dry Run
+  - `src/ui/widgets/status_bar.py` (new) - CookieStatusBar showing state and counts
+  - `src/ui/workers/__init__.py` (new) - Workers package exports
+  - `src/ui/workers/scan_worker.py` (new) - ScanWorker QThread for background scanning
+  - `src/ui/workers/clean_worker.py` (new) - CleanWorker QThread for background deletion
+  - `src/ui/dialogs/__init__.py` (new) - Dialogs package exports
+  - `src/ui/dialogs/confirm_clean.py` (new) - CleanConfirmationDialog
+  - `src/ui/dialogs/blocking_apps.py` (new) - BlockingAppsDialog for lock resolution
+  - `src/ui/dialogs/restore_backup.py` (new) - RestoreBackupDialog
+  - `src/ui/dialogs/settings.py` (new) - SettingsDialog for theme/backup settings
+  - `src/ui/dialogs/error_dialog.py` (new) - ErrorDialog for error acknowledgment
+  - `src/ui/styles/__init__.py` (new) - Styles package exports
+  - `src/ui/styles/themes.py` (new) - Light/Dark/System theme definitions
+  - `main.py` (new) - Application entry point
+  - `tests/ui/__init__.py` (new) - UI tests package
+  - `tests/ui/conftest.py` (new) - pytest-qt fixtures
+  - `tests/ui/test_state_machine.py` (new) - 25 state machine tests
+  - `tests/ui/test_searchable_list.py` (new) - 16 searchable list tests
+  - `tests/ui/test_toolbar.py` (new) - 10 toolbar tests
+  - `tests/ui/test_workers.py` (new) - 12 worker tests
+- **Summary:**
+  - Implemented StateManager enforcing FSM transitions per PRD 3.2
+  - Implemented MainWindow with dual-pane layout for cookies-to-delete vs whitelist
+  - Implemented SearchableListWidget with <100ms filtering performance for 1000+ items
+  - Implemented ScanWorker/CleanWorker QThreads for background operations
+  - Implemented all dialogs: confirmation, blocking apps, restore, settings, error
+  - Implemented light/dark/system theme support
+  - Integrated with existing scanner, execution, and whitelist modules
+  - All 304 tests passing (243 existing + 61 new UI tests)
+  - Safety verified: No DELETE statements in UI module
+- **Next step:** Commit Phase 3 changes
 
 ### 2026-01-21: Phase 2.3 Chromium Cookie Decryptor Complete
 - **Files changed:**
