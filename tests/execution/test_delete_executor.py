@@ -357,7 +357,15 @@ class TestDeleteExecutor:
     def test_abort_when_backup_fails(self, mock_lock_resolver, chromium_db, temp_dir):
         """Deletion aborts when backup creation fails."""
         mock_backup = MagicMock(spec=BackupManager)
+        # Mock both create_backup and create_backup_at since executor uses
+        # create_backup_at when operation has backup_path specified
         mock_backup.create_backup.return_value = BackupResult(
+            db_path=chromium_db,
+            backup_path=temp_dir / "backup.bak",
+            success=False,
+            error="Permission denied",
+        )
+        mock_backup.create_backup_at.return_value = BackupResult(
             db_path=chromium_db,
             backup_path=temp_dir / "backup.bak",
             success=False,

@@ -135,6 +135,7 @@ class DeleteOperation:
     profile: str
     db_path: Path
     backup_path: Path
+    browser_executable: str = ""  # e.g., "chrome.exe" for process gate check
     targets: list[DeleteTarget] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -144,6 +145,7 @@ class DeleteOperation:
             "profile": self.profile,
             "db_path": str(self.db_path),
             "backup_path": str(self.backup_path),
+            "browser_executable": self.browser_executable,
             "targets": [t.to_dict() for t in self.targets],
         }
 
@@ -155,6 +157,7 @@ class DeleteOperation:
             profile=data["profile"],
             db_path=Path(data["db_path"]),
             backup_path=Path(data["backup_path"]),
+            browser_executable=data.get("browser_executable", ""),
             targets=[DeleteTarget.from_dict(t) for t in data.get("targets", [])],
         )
 

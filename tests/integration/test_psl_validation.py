@@ -21,28 +21,28 @@ class TestPSLDataFile:
 
     def test_psl_file_loads_successfully(self) -> None:
         """PSL data file loads without errors."""
-        suffixes = load_public_suffixes()
-        assert len(suffixes) > 0
+        psl_data = load_public_suffixes()
+        assert len(psl_data.suffixes) > 0
 
     def test_psl_contains_generic_tlds(self) -> None:
         """PSL contains all major generic TLDs."""
-        suffixes = load_public_suffixes()
+        psl_data = load_public_suffixes()
 
         generic_tlds = ["com", "net", "org", "edu", "gov", "info", "biz"]
         for tld in generic_tlds:
-            assert tld in suffixes, f"Missing generic TLD: {tld}"
+            assert tld in psl_data.suffixes, f"Missing generic TLD: {tld}"
 
     def test_psl_contains_country_codes(self) -> None:
         """PSL contains major country code TLDs."""
-        suffixes = load_public_suffixes()
+        psl_data = load_public_suffixes()
 
         country_codes = ["uk", "de", "fr", "jp", "cn", "au", "ca", "br", "in", "us"]
         for cc in country_codes:
-            assert cc in suffixes, f"Missing country code: {cc}"
+            assert cc in psl_data.suffixes, f"Missing country code: {cc}"
 
     def test_psl_contains_second_level_domains(self) -> None:
         """PSL contains common second-level domains."""
-        suffixes = load_public_suffixes()
+        psl_data = load_public_suffixes()
 
         second_levels = [
             "co.uk", "org.uk", "ac.uk",
@@ -51,15 +51,15 @@ class TestPSLDataFile:
             "com.br", "com.cn",
         ]
         for sl in second_levels:
-            assert sl in suffixes, f"Missing second-level: {sl}"
+            assert sl in psl_data.suffixes, f"Missing second-level: {sl}"
 
     def test_psl_contains_new_gtlds(self) -> None:
         """PSL contains newer generic TLDs."""
-        suffixes = load_public_suffixes()
+        psl_data = load_public_suffixes()
 
         new_gtlds = ["io", "co", "app", "dev", "ai"]
         for gtld in new_gtlds:
-            assert gtld in suffixes, f"Missing new gTLD: {gtld}"
+            assert gtld in psl_data.suffixes, f"Missing new gTLD: {gtld}"
 
 
 class TestWhitelistPSLEnforcement:
@@ -174,8 +174,8 @@ class TestPSLEdgeCases:
 
     def test_platform_suffixes_included(self) -> None:
         """Common platform suffixes are included."""
-        suffixes = load_public_suffixes()
+        psl_data = load_public_suffixes()
 
         platforms = ["github.io", "herokuapp.com", "netlify.app"]
         for platform in platforms:
-            assert platform in suffixes, f"Missing platform suffix: {platform}"
+            assert platform in psl_data.suffixes, f"Missing platform suffix: {platform}"

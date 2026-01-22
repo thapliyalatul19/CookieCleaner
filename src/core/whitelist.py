@@ -141,13 +141,13 @@ class WhitelistManager:
 
         # For domain: prefix, reject public suffixes
         if prefix == "domain":
-            public_suffixes = load_public_suffixes()
-            if value in public_suffixes:
+            psl_data = load_public_suffixes()
+            if value in psl_data.suffixes:
                 return False, f"Public suffix '{value}' cannot be used with domain: prefix (too broad)"
             # Also check multi-part suffixes
             if len(labels) >= 2:
                 two_part = f"{labels[-2]}.{labels[-1]}"
-                if value == two_part and two_part in public_suffixes:
+                if value == two_part and two_part in psl_data.suffixes:
                     return False, f"Public suffix '{value}' cannot be used with domain: prefix (too broad)"
 
         # For exact: prefix, reject public suffixes (PRD requirement)

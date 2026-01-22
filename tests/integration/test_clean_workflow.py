@@ -289,12 +289,13 @@ class TestRestoreWorkflow:
         backup_manager = BackupManager(temp_backup_dir)
 
         # Create first backup (via delete)
+        # backup_path must be in backup_root/browser/profile/ for get_latest_backup to find it
         plan1 = DeletePlan.create(dry_run=False)
         plan1.add_operation(DeleteOperation(
             browser="Chrome",
             profile=chrome_store.profile_id,
             db_path=chrome_store.db_path,
-            backup_path=temp_backup_dir / "first.bak",
+            backup_path=temp_backup_dir / "Chrome" / chrome_store.profile_id / "first.bak",
             targets=[
                 DeleteTarget("tracker.com", "%.tracker.com", 1),
             ],

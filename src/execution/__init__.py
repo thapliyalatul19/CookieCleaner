@@ -2,7 +2,12 @@
 
 from src.execution.lock_resolver import LockResolver, LockReport
 from src.execution.backup_manager import BackupManager, BackupResult
-from src.execution.delete_executor import DeleteExecutor, DeleteResult, DeleteReport
+from src.execution.delete_executor import (
+    DeleteExecutor,
+    DeleteResult,
+    DeleteReport,
+    ProcessGateError,
+)
 
 __all__ = [
     "LockResolver",
@@ -12,4 +17,5 @@ __all__ = [
     "DeleteExecutor",
     "DeleteResult",
     "DeleteReport",
+    "ProcessGateError",
 ]

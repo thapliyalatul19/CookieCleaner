@@ -67,7 +67,12 @@ class BlockingAppsDialog(QDialog):
             warning_label = QLabel(
                 "Some cookie databases are locked but the blocking application "
                 "could not be identified.\n\n"
-                "Please close all browsers manually before cleaning."
+                "Please close all browsers and check for other applications that may "
+                "be accessing the database files, such as:\n"
+                "• Antivirus or security software\n"
+                "• File indexing services (Windows Search, Everything)\n"
+                "• Cloud sync tools (OneDrive, Dropbox, Google Drive)\n"
+                "• Backup software"
             )
         else:
             warning_label = QLabel(
@@ -112,10 +117,11 @@ class BlockingAppsDialog(QDialog):
         if has_unknown_blocker:
             instructions = QLabel(
                 "Options:\n"
-                "• 'Retry' - Try again after manually closing all browsers\n"
+                "• 'Retry' - Try again after closing the blocking application(s)\n"
                 "• 'Cancel' - Abort the operation\n\n"
                 "Note: 'Close Browsers & Retry' is disabled because the blocking "
-                "application could not be identified."
+                "application could not be identified. Try closing browsers and the "
+                "applications listed above, then click Retry."
             )
         else:
             instructions = QLabel(

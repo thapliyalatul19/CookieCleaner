@@ -126,6 +126,102 @@ class BackupManager:
                 error=error,
             )
 
+    def create_backup_at(
+        self,
+        db_path: Path,
+        backup_path: Path,
+        browser: str,
+        profile: str,
+    ) -> BackupResult:
+        """
+        Create a backup at a specific path (for deterministic plan execution).
+
+        This method creates a backup at the exact path specified, rather than
+        generating a path. This ensures the backup path in the plan matches
+        the actual backup location.
+
+        Args:
+            db_path: Path to the database file to backup
+            backup_path: Exact path where backup should be created
+            browser: Browser name (for metadata)
+            profile: Profile name (for metadata)
+
+        Returns:
+            BackupResult with success status and backup path
+        """
+        try:
+            # Create backup directory if it doesn't exist
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy the database file
+            shutil.copy2(db_path, backup_path)
+
+            # Also backup WAL and SHM files if they exist
+            wal_path = Path(str(db_path) + "-wal")
+            shm_path = Path(str(db_path) + "-shm")
+
+            if wal_path.exists():
+                wal_backup = Path(str(backup_path) + "-wal")
+                shutil.copy2(wal_path, wal_backup)
+                logger.debug("Backed up WAL file: %s", wal_backup)
+
+            if shm_path.exists():
+                shm_backup = Path(str(backup_path) + "-shm")
+                shutil.copy2(shm_path, shm_backup)
+                logger.debug("Backed up SHM file: %s", shm_backup)
+
+            # Extract timestamp from backup filename if possible
+            # Expected format: {filename}.{timestamp}.bak
+            parts = backup_path.name.rsplit(".", 2)
+            timestamp = parts[1] if len(parts) >= 3 else datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+            # Write metadata file with original path info
+            meta_path = Path(str(backup_path) + ".meta")
+            metadata = {
+                "original_db_path": str(db_path),
+                "browser": browser,
+                "profile": profile,
+                "timestamp": timestamp,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            meta_path.write_text(json.dumps(metadata, indent=2))
+            logger.debug("Created backup metadata: %s", meta_path)
+
+            logger.info("Created backup: %s -> %s", db_path, backup_path)
+
+            return BackupResult(
+                db_path=db_path,
+                backup_path=backup_path,
+                success=True,
+            )
+        except FileNotFoundError:
+            error = f"Source file not found: {db_path}"
+            logger.error(error)
+            return BackupResult(
+                db_path=db_path,
+                backup_path=backup_path,
+                success=False,
+                error=error,
+            )
+        except PermissionError as e:
+            error = f"Permission denied: {e}"
+            logger.error(error)
+            return BackupResult(
+                db_path=db_path,
+                backup_path=backup_path,
+                success=False,
+                error=error,
+            )
+        except OSError as e:
+            error = f"OS error during backup: {e}"
+            logger.error(error)
+            return BackupResult(
+                db_path=db_path,
+                backup_path=backup_path,
+                success=False,
+                error=error,
+            )
+
     def restore_backup(self, backup_path: Path, db_path: Path) -> bool:
         """
         Restore a database from a backup file.

@@ -359,3 +359,222 @@ class TestDryRunWithLocks:
 
         # Verify lock check was called
         locked_lock_resolver.check_lock.assert_called_once()
+
+
+class TestAbortAllPolicy:
+    """Test that the abort-all policy is enforced.
+
+    PRD requires that when ANY browser with cookies targeted for deletion is
+    running, the ENTIRE operation should be aborted - no partial deletions.
+    """
+
+    def test_process_gate_aborts_entire_plan(
+        self,
+        fixture_c_multi_profile: dict[str, Path],
+        temp_backup_dir: Path,
+    ):
+        """
+        Verify process gate aborts entire plan when any browser is running.
+
+        Even if only Chrome is running, and plan includes both Chrome and Edge,
+        the process gate should abort the entire operation.
+        """
+        from src.execution.delete_executor import ProcessGateError
+
+        chrome_default = fixture_c_multi_profile["chrome_default"]
+        edge_default = fixture_c_multi_profile["edge_default"]
+
+        # Mock resolver that shows Chrome is running
+        mock_resolver = MagicMock(spec=LockResolver)
+        mock_resolver.check_lock.return_value = LockReport(
+            db_path=chrome_default, is_locked=False, blocking_processes=[]
+        )
+        # Simulate Chrome running
+        mock_resolver.get_running_browsers.return_value = {"chrome.exe"}
+
+        plan = DeletePlan.create(dry_run=False)
+
+        # Add Chrome operation with browser_executable
+        plan.add_operation(DeleteOperation(
+            browser="Chrome",
+            profile="Default",
+            db_path=chrome_default,
+            backup_path=temp_backup_dir / "chrome.bak",
+            browser_executable="chrome.exe",
+            targets=[
+                DeleteTarget("google.com", "%.google.com", 1),
+            ],
+        ))
+
+        # Add Edge operation - Edge is NOT running
+        plan.add_operation(DeleteOperation(
+            browser="Edge",
+            profile="Default",
+            db_path=edge_default,
+            backup_path=temp_backup_dir / "edge.bak",
+            browser_executable="msedge.exe",
+            targets=[
+                DeleteTarget("bing.com", "%.bing.com", 1),
+            ],
+        ))
+
+        backup_manager = BackupManager(temp_backup_dir)
+        executor = DeleteExecutor(
+            lock_resolver=mock_resolver,
+            backup_manager=backup_manager,
+        )
+
+        # Should raise ProcessGateError, not partial execute
+        with pytest.raises(ProcessGateError) as exc_info:
+            executor.execute(plan)
+
+        # Verify Chrome is in the blocking list
+        assert "chrome.exe" in exc_info.value.running_browsers
+
+        # Verify NO deletions occurred (abort-all, not partial)
+        initial_chrome = count_cookies_in_chromium_db(chrome_default)
+        initial_edge = count_cookies_in_chromium_db(edge_default)
+        assert initial_chrome == 2  # google.com + facebook.com cookies
+        assert initial_edge == 2  # bing.com + microsoft.com cookies
+
+    def test_process_gate_allows_when_no_browsers_running(
+        self,
+        fixture_c_multi_profile: dict[str, Path],
+        temp_backup_dir: Path,
+    ):
+        """
+        Verify operations proceed when no blocking browsers are running.
+        """
+        chrome_default = fixture_c_multi_profile["chrome_default"]
+        initial_count = count_cookies_in_chromium_db(chrome_default)
+
+        # Mock resolver that shows no browsers running
+        mock_resolver = MagicMock(spec=LockResolver)
+        mock_resolver.check_lock.return_value = LockReport(
+            db_path=chrome_default, is_locked=False, blocking_processes=[]
+        )
+        mock_resolver.get_running_browsers.return_value = set()
+
+        plan = DeletePlan.create(dry_run=False)
+        plan.add_operation(DeleteOperation(
+            browser="Chrome",
+            profile="Default",
+            db_path=chrome_default,
+            backup_path=temp_backup_dir / "chrome.bak",
+            browser_executable="chrome.exe",
+            targets=[
+                DeleteTarget("google.com", "%.google.com", 1),
+            ],
+        ))
+
+        backup_manager = BackupManager(temp_backup_dir)
+        executor = DeleteExecutor(
+            lock_resolver=mock_resolver,
+            backup_manager=backup_manager,
+        )
+
+        # Should succeed without exception
+        report = executor.execute(plan)
+
+        assert report.success
+        assert report.total_deleted == 1
+
+        # Verify deletion occurred
+        final_count = count_cookies_in_chromium_db(chrome_default)
+        assert final_count == initial_count - 1
+
+    def test_process_gate_only_checks_relevant_browsers(
+        self,
+        fixture_c_multi_profile: dict[str, Path],
+        temp_backup_dir: Path,
+    ):
+        """
+        Verify process gate only blocks browsers with operations in the plan.
+
+        If Firefox is running but plan only targets Chrome, should proceed.
+        """
+        chrome_default = fixture_c_multi_profile["chrome_default"]
+        initial_count = count_cookies_in_chromium_db(chrome_default)
+
+        # Mock resolver that shows Firefox is running (but not Chrome)
+        mock_resolver = MagicMock(spec=LockResolver)
+        mock_resolver.check_lock.return_value = LockReport(
+            db_path=chrome_default, is_locked=False, blocking_processes=[]
+        )
+        mock_resolver.get_running_browsers.return_value = {"firefox.exe"}
+
+        plan = DeletePlan.create(dry_run=False)
+        plan.add_operation(DeleteOperation(
+            browser="Chrome",
+            profile="Default",
+            db_path=chrome_default,
+            backup_path=temp_backup_dir / "chrome.bak",
+            browser_executable="chrome.exe",  # Chrome, not Firefox
+            targets=[
+                DeleteTarget("google.com", "%.google.com", 1),
+            ],
+        ))
+
+        backup_manager = BackupManager(temp_backup_dir)
+        executor = DeleteExecutor(
+            lock_resolver=mock_resolver,
+            backup_manager=backup_manager,
+        )
+
+        # Should succeed - Firefox running doesn't affect Chrome operations
+        report = executor.execute(plan)
+
+        assert report.success
+        assert report.total_deleted == 1
+
+        # Verify deletion occurred
+        final_count = count_cookies_in_chromium_db(chrome_default)
+        assert final_count == initial_count - 1
+
+    def test_multiple_browsers_running_lists_all_blockers(
+        self,
+        fixture_c_multi_profile: dict[str, Path],
+        temp_backup_dir: Path,
+    ):
+        """
+        Verify ProcessGateError lists all blocking browsers, not just one.
+        """
+        from src.execution.delete_executor import ProcessGateError
+
+        chrome_default = fixture_c_multi_profile["chrome_default"]
+        edge_default = fixture_c_multi_profile["edge_default"]
+
+        # Mock resolver that shows both Chrome and Edge are running
+        mock_resolver = MagicMock(spec=LockResolver)
+        mock_resolver.get_running_browsers.return_value = {"chrome.exe", "msedge.exe"}
+
+        plan = DeletePlan.create(dry_run=False)
+        plan.add_operation(DeleteOperation(
+            browser="Chrome",
+            profile="Default",
+            db_path=chrome_default,
+            backup_path=temp_backup_dir / "chrome.bak",
+            browser_executable="chrome.exe",
+            targets=[DeleteTarget("google.com", "%.google.com", 1)],
+        ))
+        plan.add_operation(DeleteOperation(
+            browser="Edge",
+            profile="Default",
+            db_path=edge_default,
+            backup_path=temp_backup_dir / "edge.bak",
+            browser_executable="msedge.exe",
+            targets=[DeleteTarget("bing.com", "%.bing.com", 1)],
+        ))
+
+        backup_manager = BackupManager(temp_backup_dir)
+        executor = DeleteExecutor(
+            lock_resolver=mock_resolver,
+            backup_manager=backup_manager,
+        )
+
+        with pytest.raises(ProcessGateError) as exc_info:
+            executor.execute(plan)
+
+        # Both browsers should be listed
+        assert "chrome.exe" in exc_info.value.running_browsers
+        assert "msedge.exe" in exc_info.value.running_browsers

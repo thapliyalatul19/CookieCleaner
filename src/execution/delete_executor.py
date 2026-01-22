@@ -2,6 +2,7 @@
 
 SAFETY CONTRACT:
 - DELETE statements are ONLY executed in this module
+- Process gate MUST pass before any backup or delete (no browsers running)
 - Lock check MUST pass before any backup or delete
 - Backup MUST succeed before any DELETE statement
 - All DELETEs are wrapped in BEGIN IMMEDIATE / COMMIT
@@ -21,6 +22,22 @@ from src.execution.lock_resolver import LockResolver
 from src.execution.backup_manager import BackupManager
 
 logger = logging.getLogger(__name__)
+
+
+class ProcessGateError(Exception):
+    """
+    Raised when browser processes are running that would block deletion.
+
+    The UI should catch this and show a "close browsers" dialog to the user.
+    Deletion must never proceed when relevant browsers are running.
+    """
+
+    def __init__(self, running_browsers: list[str], message: str | None = None):
+        self.running_browsers = running_browsers
+        if message is None:
+            browsers_str = ", ".join(running_browsers)
+            message = f"Cannot proceed: browsers are running: {browsers_str}"
+        super().__init__(message)
 
 
 @dataclass
@@ -91,7 +108,31 @@ class DeleteExecutor:
 
         Returns:
             DeleteReport with results for each operation
+
+        Raises:
+            ProcessGateError: If any browser with operations is running
         """
+        # SAFETY: Enforce process gate BEFORE any backup or delete
+        # Collect all browser executables that have operations in this plan
+        required_browsers = {
+            op.browser_executable
+            for op in plan.operations
+            if op.browser_executable
+        }
+
+        if required_browsers:
+            running_browsers = self.lock_resolver.get_running_browsers()
+            blocking_browsers = [
+                exe for exe in required_browsers
+                if exe.lower() in running_browsers
+            ]
+            if blocking_browsers:
+                logger.warning(
+                    "Process gate blocked execution: browsers running: %s",
+                    blocking_browsers
+                )
+                raise ProcessGateError(blocking_browsers)
+
         report = DeleteReport(plan_id=plan.plan_id, dry_run=dry_run)
 
         for operation in plan.operations:
@@ -185,9 +226,15 @@ class DeleteExecutor:
         # Step 2: Create backup (skip for dry run)
         backup_path = None
         if not dry_run:
-            backup_result = self.backup_manager.create_backup(
-                op.db_path, op.browser, op.profile
-            )
+            # Use plan-specified backup path if available, otherwise let BackupManager generate one
+            if op.backup_path and str(op.backup_path) != ".":
+                backup_result = self.backup_manager.create_backup_at(
+                    op.db_path, op.backup_path, op.browser, op.profile
+                )
+            else:
+                backup_result = self.backup_manager.create_backup(
+                    op.db_path, op.browser, op.profile
+                )
             if not backup_result.success:
                 error = f"Backup failed: {backup_result.error}"
                 logger.error("Cannot delete from %s: %s", op.db_path, error)

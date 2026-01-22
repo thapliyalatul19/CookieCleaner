@@ -3,20 +3,30 @@
 Provides functions to load and query the Public Suffix List (PSL)
 for domain validation in whitelist entries.
 
-Note on PSL parsing limitations:
-- Wildcard rules (e.g., *.ck) are handled by adding the base suffix
-- Exception rules (e.g., !www.ck) are not fully handled
-- Full PSL parsing is complex; this implementation covers common cases
+This implementation properly handles:
+- Standard suffix rules (e.g., com, co.uk)
+- Wildcard rules (e.g., *.ck means any subdomain of ck is a public suffix)
+- Exception rules (e.g., !www.ck means www.ck is NOT a public suffix)
 """
 
 from __future__ import annotations
 
 import logging
 import sys
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PSLData:
+    """Parsed Public Suffix List data."""
+
+    suffixes: frozenset[str] = field(default_factory=frozenset)
+    wildcards: frozenset[str] = field(default_factory=frozenset)  # Base domains with wildcard rules (e.g., "ck" for "*.ck")
+    exceptions: frozenset[str] = field(default_factory=frozenset)  # Exception domains (e.g., "www.ck" for "!www.ck")
 
 
 def _get_psl_path() -> Path:
@@ -72,23 +82,26 @@ _FALLBACK_SUFFIXES = frozenset({
 
 
 @lru_cache(maxsize=1)
-def load_public_suffixes() -> frozenset[str]:
+def load_public_suffixes() -> PSLData:
     """
     Load public suffixes from the data file.
 
     Uses LRU cache to avoid repeated file reads.
 
     Returns:
-        Frozenset of public suffix strings
+        PSLData containing suffixes, wildcards, and exceptions
     """
     psl_path = _get_psl_path()
 
     if not psl_path.exists():
         logger.debug("PSL data file not found at %s, using fallback list", psl_path)
-        return _FALLBACK_SUFFIXES
+        return PSLData(suffixes=_FALLBACK_SUFFIXES)
 
     try:
         suffixes = set()
+        wildcards = set()
+        exceptions = set()
+
         with open(psl_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -97,31 +110,51 @@ def load_public_suffixes() -> frozenset[str]:
                 if not line or line.startswith("//"):
                     continue
 
-                # Handle wildcard rules (e.g., *.ck)
-                # Add the base suffix for wildcards
-                if line.startswith("*."):
-                    suffixes.add(line[2:])
+                # Handle exception rules (e.g., !www.ck)
+                # These indicate domains that are NOT public suffixes
+                # despite a wildcard rule that would otherwise match
+                if line.startswith("!"):
+                    exception_domain = line[1:]  # Remove the "!"
+                    exceptions.add(exception_domain)
                     continue
 
-                # Skip exception rules (e.g., !www.ck) - these are complex to handle
-                # Exception rules indicate domains that are NOT public suffixes
-                # despite the wildcard rule above them
-                if line.startswith("!"):
+                # Handle wildcard rules (e.g., *.ck)
+                # These mean any single label + base is a public suffix
+                if line.startswith("*."):
+                    base = line[2:]
+                    wildcards.add(base)
+                    # Also add the base itself as a suffix
+                    suffixes.add(base)
                     continue
 
                 suffixes.add(line)
 
-        logger.info("Loaded %d public suffixes from %s", len(suffixes), psl_path)
-        return frozenset(suffixes)
+        logger.info(
+            "Loaded PSL: %d suffixes, %d wildcards, %d exceptions from %s",
+            len(suffixes),
+            len(wildcards),
+            len(exceptions),
+            psl_path,
+        )
+        return PSLData(
+            suffixes=frozenset(suffixes),
+            wildcards=frozenset(wildcards),
+            exceptions=frozenset(exceptions),
+        )
 
     except OSError as e:
         logger.warning("Failed to load PSL file: %s, using fallback", e)
-        return _FALLBACK_SUFFIXES
+        return PSLData(suffixes=_FALLBACK_SUFFIXES)
 
 
 def is_public_suffix(domain: str) -> bool:
     """
     Check if a domain is a public suffix.
+
+    Properly handles PSL rules including wildcards and exceptions:
+    - Direct suffixes (e.g., "com", "co.uk") -> True
+    - Wildcard matches (e.g., "foo.ck" matches "*.ck") -> True
+    - Exception matches (e.g., "www.ck" with "!www.ck" rule) -> False
 
     Args:
         domain: Domain to check (e.g., "co.uk", "com")
@@ -130,15 +163,25 @@ def is_public_suffix(domain: str) -> bool:
         True if the domain is a public suffix
     """
     domain = domain.lower().strip().lstrip(".")
-    suffixes = load_public_suffixes()
+    psl_data = load_public_suffixes()
+
+    # Check exception rules first - if the domain is an exception, it's NOT a public suffix
+    if domain in psl_data.exceptions:
+        return False
 
     # Direct match
-    if domain in suffixes:
+    if domain in psl_data.suffixes:
         return True
 
-    # Check if it's a registered domain under a public suffix
-    # e.g., "example.co.uk" is not a public suffix, but "co.uk" is
-    # We want to return True only for the suffix itself
+    # Check wildcard rules
+    # A wildcard rule "*.ck" means any single label + ck is a public suffix
+    # e.g., "foo.ck" matches "*.ck"
+    labels = domain.split(".")
+    if len(labels) >= 2:
+        # Check if the domain minus first label matches a wildcard base
+        base = ".".join(labels[1:])
+        if base in psl_data.wildcards:
+            return True
 
     return False
 
@@ -147,6 +190,8 @@ def get_public_suffix(domain: str) -> str | None:
     """
     Get the public suffix for a domain.
 
+    Properly handles PSL rules including wildcards and exceptions.
+
     Args:
         domain: Full domain to check (e.g., "www.example.co.uk")
 
@@ -154,15 +199,29 @@ def get_public_suffix(domain: str) -> str | None:
         The public suffix if found (e.g., "co.uk"), or None
     """
     domain = domain.lower().strip().lstrip(".")
-    suffixes = load_public_suffixes()
+    psl_data = load_public_suffixes()
     labels = domain.split(".")
 
     # Try progressively longer suffixes from the right
     # e.g., for "www.example.co.uk", try "uk", then "co.uk"
     for i in range(len(labels)):
         candidate = ".".join(labels[i:])
-        if candidate in suffixes:
+
+        # Check exception first - exceptions are NOT public suffixes
+        if candidate in psl_data.exceptions:
+            continue
+
+        # Direct match
+        if candidate in psl_data.suffixes:
             return candidate
+
+        # Check wildcard match
+        # If candidate is "foo.ck" and we have wildcard "*.ck" (stored as "ck" in wildcards)
+        candidate_labels = candidate.split(".")
+        if len(candidate_labels) >= 2:
+            base = ".".join(candidate_labels[1:])
+            if base in psl_data.wildcards:
+                return candidate
 
     return None
 

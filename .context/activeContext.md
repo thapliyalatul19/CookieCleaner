@@ -1,9 +1,35 @@
 # Active Context
 
 ## Current Phase
-Phase 5: Code Review Fixes (Complete)
+Phase 5: Code Review Fixes Round 3 (Complete)
 
 ## Recent Changes
+
+### 2026-01-22: Code Review Fixes Round 3 (codexreview3.md)
+- **Files changed:**
+  - `src/core/models.py` - Added `browser_executable` field to DeleteOperation
+  - `src/core/delete_planner.py` - Added `backup_root` parameter, computes `backup_path` and `browser_executable`
+  - `src/core/delete_plan_validator.py` - Count mismatch now errors (not warnings), uses temp DB copy for validation
+  - `src/core/psl_loader.py` - Full PSL parsing with wildcards and exception rules via PSLData dataclass
+  - `src/core/whitelist.py` - Updated to use PSLData.suffixes
+  - `src/execution/delete_executor.py` - Process gate in execute(), uses `create_backup_at` for plan-specified paths
+  - `src/execution/backup_manager.py` - Added `create_backup_at()` method for deterministic backup paths
+  - `src/ui/workers/clean_worker.py` - Passes `backup_root` to DeletePlanner, enables count verification
+  - `src/ui/dialogs/blocking_apps.py` - Unknown blocker guidance mentions non-browser lockers (AV, indexers, sync tools)
+  - `tests/integration/test_lock_handling.py` - Added 4 abort-all policy tests for process gate enforcement
+  - `tests/core/test_psl_loader.py` - Updated for PSLData return type
+  - `tests/integration/test_psl_validation.py` - Updated for PSLData return type
+  - `tests/execution/test_delete_executor.py` - Mock both create_backup and create_backup_at
+  - `tests/integration/test_clean_workflow.py` - Fixed backup path to match expected directory structure
+- **Summary:**
+  - Issue 1: Process gate in DeleteExecutor enforces browser check before any backup/delete
+  - Issue 2: backup_path wired end-to-end from planner → backup manager → executor
+  - Issue 3: Count validation uses temp DB copy and treats mismatches as errors
+  - Issue 4: PSL parsing handles wildcards (`*.ck`) and exceptions (`!www.ck`)
+  - Issue 5: Unknown blocker dialog mentions AV, indexers, sync tools
+  - Issue 6: Added tests for abort-all policy
+  - 527 tests passing (3 failures are missing pycryptodome, not code issues)
+- **Next step:** Commit code review fixes
 
 ### 2026-01-22: Code Review Fixes Complete (11 Commits)
 - **Files changed:**

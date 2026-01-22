@@ -13,6 +13,7 @@ from src.core.psl_loader import (
     get_public_suffix,
     clear_cache,
     _FALLBACK_SUFFIXES,
+    PSLData,
 )
 
 
@@ -27,33 +28,34 @@ def clear_psl_cache():
 class TestLoadPublicSuffixes:
     """Tests for load_public_suffixes function."""
 
-    def test_returns_frozenset(self) -> None:
-        """Returns a frozenset."""
+    def test_returns_psl_data(self) -> None:
+        """Returns a PSLData object."""
         result = load_public_suffixes()
-        assert isinstance(result, frozenset)
+        assert isinstance(result, PSLData)
+        assert isinstance(result.suffixes, frozenset)
 
     def test_contains_common_tlds(self) -> None:
         """Contains common TLDs."""
-        suffixes = load_public_suffixes()
-        assert "com" in suffixes
-        assert "net" in suffixes
-        assert "org" in suffixes
-        assert "uk" in suffixes
+        psl_data = load_public_suffixes()
+        assert "com" in psl_data.suffixes
+        assert "net" in psl_data.suffixes
+        assert "org" in psl_data.suffixes
+        assert "uk" in psl_data.suffixes
 
     def test_contains_country_second_level(self) -> None:
         """Contains country code second-level domains."""
-        suffixes = load_public_suffixes()
-        assert "co.uk" in suffixes
-        assert "com.au" in suffixes
-        assert "co.jp" in suffixes
+        psl_data = load_public_suffixes()
+        assert "co.uk" in psl_data.suffixes
+        assert "com.au" in psl_data.suffixes
+        assert "co.jp" in psl_data.suffixes
 
     def test_uses_fallback_when_file_missing(self, tmp_path: Path) -> None:
         """Uses fallback when PSL file doesn't exist."""
         with patch("src.core.psl_loader._get_psl_path", return_value=tmp_path / "nonexistent.dat"):
             clear_cache()
-            suffixes = load_public_suffixes()
+            psl_data = load_public_suffixes()
 
-        assert suffixes == _FALLBACK_SUFFIXES
+        assert psl_data.suffixes == _FALLBACK_SUFFIXES
 
     def test_cached_result(self) -> None:
         """Returns cached result on subsequent calls."""

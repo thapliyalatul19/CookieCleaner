@@ -10,12 +10,19 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from src.core.constants import BACKUPS_DIR
 from src.core.models import DomainAggregate, DeletePlan
 from src.core.delete_planner import DeletePlanner
 from src.core.delete_plan_validator import DeletePlanValidator
 from src.core.whitelist import WhitelistManager
 from src.core.logging_config import log_clean_operation
-from src.execution import LockResolver, LockReport, DeleteExecutor, DeleteReport
+from src.execution import (
+    LockResolver,
+    LockReport,
+    DeleteExecutor,
+    DeleteReport,
+    ProcessGateError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +62,8 @@ class CleanWorker(QThread):
         self._cancelled = False
         self._lock_resolver = LockResolver()
         self._delete_executor = DeleteExecutor()
-        self._planner = DeletePlanner()
-        self._validator = DeletePlanValidator(whitelist_manager)
+        self._planner = DeletePlanner(backup_root=BACKUPS_DIR)
+        self._validator = DeletePlanValidator(whitelist_manager, verify_counts=True)
 
     def set_domains(self, domains: list[DomainAggregate]) -> None:
         """Set the domains to delete."""
@@ -78,42 +85,15 @@ class CleanWorker(QThread):
             progress: Status messages during clean
             finished: DeleteReport with results
             lock_detected: List of LockReports if databases are locked
+            browsers_running: List of browser executables if process gate fails
             error: Error details if clean fails
         """
         self._cancelled = False
 
         try:
-            # Preflight check: Are any browsers running?
-            running_browsers = self._lock_resolver.get_running_browsers()
-            if running_browsers and self._domains:
-                # Check if any of the domains we want to delete come from running browsers
-                # Build a quick mapping of which browsers have cookies to delete
-                browsers_with_targets = set()
-                for domain in self._domains:
-                    for record in domain.records:
-                        browser_name = record.store.browser_name.lower()
-                        # Map browser names to executables
-                        exe_map = {
-                            "chrome": "chrome.exe",
-                            "edge": "msedge.exe",
-                            "brave": "brave.exe",
-                            "firefox": "firefox.exe",
-                            "opera": "opera.exe",
-                            "vivaldi": "vivaldi.exe",
-                        }
-                        for name, exe in exe_map.items():
-                            if name in browser_name and exe in running_browsers:
-                                browsers_with_targets.add(exe)
-
-                # If we have conflicts, block the clean operation
-                # User must close browsers before proceeding (PRD safety requirement)
-                if browsers_with_targets:
-                    logger.warning(
-                        "Preflight check blocked: Browsers with target cookies are running: %s",
-                        browsers_with_targets,
-                    )
-                    self.browsers_running.emit(list(browsers_with_targets))
-                    return
+            # NOTE: Browser process gate is now enforced by DeleteExecutor.execute()
+            # which raises ProcessGateError if any target browser is running.
+            # This ensures the gate cannot be bypassed by calling executor directly.
 
             if not self._domains:
                 self.progress.emit("No domains to delete", 0, 0)
@@ -202,6 +182,10 @@ class CleanWorker(QThread):
                 )
             self.finished.emit(report)
 
+        except ProcessGateError as e:
+            # Browser process gate failed - user must close browsers
+            logger.warning("Process gate error: %s", e)
+            self.browsers_running.emit(e.running_browsers)
         except Exception as e:
             logger.exception("Clean failed with error")
             self.error.emit(type(e).__name__, str(e))

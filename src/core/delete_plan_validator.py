@@ -12,6 +12,7 @@ from pathlib import Path
 
 from src.core.models import DeletePlan, DeleteOperation
 from src.core.whitelist import WhitelistManager
+from src.scanner.db_copy import copy_db_to_temp, cleanup_temp_db
 
 logger = logging.getLogger(__name__)
 
@@ -137,12 +138,13 @@ class DeletePlanValidator:
                             target_index=target_idx,
                         )
 
-            # Optional: Verify counts match database
+            # Optional: Verify counts match database (uses temp copy for safety)
             if self._verify_counts:
                 count_mismatches = self._verify_db_counts(operation)
                 for target_idx, (expected, actual) in count_mismatches:
                     target = operation.targets[target_idx]
-                    result.add_warning(
+                    # Count mismatches are errors - stale data could lead to wrong deletions
+                    result.add_error(
                         "COUNT_MISMATCH",
                         f"Target '{target.normalized_domain}' count mismatch: "
                         f"expected {expected}, found {actual} in database",
@@ -173,6 +175,9 @@ class DeletePlanValidator:
         """
         Verify target counts match actual database counts.
 
+        Uses a temporary copy of the database to avoid locking issues
+        when the browser is running.
+
         Args:
             operation: DeleteOperation to verify
 
@@ -184,8 +189,11 @@ class DeletePlanValidator:
         if not operation.db_path.exists():
             return mismatches
 
+        temp_db = None
         try:
-            conn = sqlite3.connect(str(operation.db_path), timeout=5.0)
+            # Copy database to temp location for safe reading
+            temp_db = copy_db_to_temp(operation.db_path)
+            conn = sqlite3.connect(str(temp_db), timeout=5.0)
             try:
                 cursor = conn.cursor()
 
@@ -210,7 +218,11 @@ class DeletePlanValidator:
 
             finally:
                 conn.close()
-        except sqlite3.Error as e:
+        except (sqlite3.Error, OSError) as e:
             logger.warning("Could not verify counts for %s: %s", operation.db_path, e)
+        finally:
+            # Always clean up the temp database
+            if temp_db is not None:
+                cleanup_temp_db(temp_db)
 
         return mismatches
